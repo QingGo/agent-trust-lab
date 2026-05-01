@@ -1,3 +1,7 @@
+from unittest.mock import patch
+
+import pytest
+
 from agent_trust_lab.hallukg import (
     AnchoringReasoner,
     CodeHalluChecker,
@@ -10,13 +14,22 @@ from agent_trust_lab.models.trajectory import SecureTrajectory, TrajectoryStep
 
 
 class TestTripleExtractor:
+    @pytest.fixture(autouse=True)
+    def _stub_mode(self):
+        with patch("agent_trust_lab.llm.get_api_key", return_value=None):
+            yield
+
     def test_default_construction(self):
         extractor = TripleExtractor()
-        assert extractor.model_name == "gpt-4o-mini"
+        assert extractor.model == "gpt-4o-mini"
 
     def test_custom_model_construction(self):
-        extractor = TripleExtractor(model_name="custom-model")
-        assert extractor.model_name == "custom-model"
+        extractor = TripleExtractor(model="custom-model")
+        assert extractor.model == "custom-model"
+
+    def test_model_name_backward_compat(self):
+        extractor = TripleExtractor(model_name="legacy-model")
+        assert extractor.model == "legacy-model"
 
     def test_extract_returns_list(self):
         extractor = TripleExtractor()
@@ -51,6 +64,39 @@ class TestTripleExtractor:
         result = extractor.extract("line1\nline2\nline3")
         triple = result[0]
         assert "\n" not in triple["object"]
+
+    def test_extract_with_real_llm(self):
+        """Verify real LLM path is called when API key is available."""
+        from agent_trust_lab.hallukg.extractor import TripleEntry, TripleList
+
+        mock_response = TripleList(
+            triples=[
+                TripleEntry(subject="agent", predicate="ran", object="test", confidence=0.9)
+            ]
+        )
+
+        with patch("agent_trust_lab.llm.get_api_key", return_value="mock-key"):
+            with patch("agent_trust_lab.llm.create_openai_client"):
+                with patch("instructor.from_openai") as mock_instructor:
+                    mock_client = mock_instructor.return_value
+                    mock_client.chat.completions.create.return_value = mock_response
+                    extractor = TripleExtractor(model="test-model")
+                    result = extractor.extract("The agent ran the test")
+                    assert len(result) == 1
+                    assert result[0]["subject"] == "agent"
+                    assert result[0]["predicate"] == "ran"
+                    assert result[0]["confidence"] == 0.9
+
+    def test_extract_fallback_to_stub_on_error(self):
+        """Verify fallback to stub when LLM call raises exception."""
+        with patch("agent_trust_lab.llm.get_api_key", return_value="mock-key"):
+            with patch("agent_trust_lab.llm.create_openai_client",
+                       side_effect=Exception("API error")):
+                extractor = TripleExtractor()
+                result = extractor.extract("test")
+                assert len(result) == 1
+                assert result[0]["subject"] == "agent"
+                assert result[0]["confidence"] == 0.85
 
 
 class TestAnchoringReasoner:
@@ -103,6 +149,11 @@ class TestAnchoringReasoner:
 
 
 class TestGSARClassifier:
+    @pytest.fixture(autouse=True)
+    def _stub_mode(self):
+        with patch("agent_trust_lab.llm.get_api_key", return_value=None):
+            yield
+
     def test_classify_returns_list_of_hallu_step_reports(self):
         classifier = GSARClassifier()
         steps = [TrajectoryStep(type="thought", content="step")]
@@ -159,6 +210,57 @@ class TestGSARClassifier:
         reports = classifier.classify(steps, [])
         assert len(reports[0].evidence) == 1
         assert "stub" in reports[0].explanation.lower()
+
+    def test_model_parameter(self):
+        classifier = GSARClassifier(model="custom-gsar-model")
+        assert classifier.model == "custom-gsar-model"
+
+    def test_default_model(self):
+        classifier = GSARClassifier()
+        assert classifier.model == "deepseek-v4-flash"
+
+    def test_classify_with_real_llm(self):
+        """Verify real LLM path is called when API key is available."""
+        from agent_trust_lab.hallukg.classifier import GSAROutput, GSARStepResult
+
+        mock_response = GSAROutput(
+            steps=[
+                GSARStepResult(
+                    step_index=0,
+                    gsar_label="Grounded",
+                    g_score=0.9,
+                    u_score=0.1,
+                    c_score=0.0,
+                    faithfulness_score=0.95,
+                    evidence=["anchored triple match"],
+                    explanation="Fully grounded in triples",
+                )
+            ]
+        )
+
+        with patch("agent_trust_lab.llm.get_api_key", return_value="mock-key"):
+            with patch("agent_trust_lab.llm.create_openai_client"):
+                with patch("instructor.from_openai") as mock_instructor:
+                    mock_client = mock_instructor.return_value
+                    mock_client.chat.completions.create.return_value = mock_response
+                    classifier = GSARClassifier(model="test-model")
+                    steps = [TrajectoryStep(type="thought", content="test")]
+                    result = classifier.classify(steps, [])
+                    assert len(result) == 1
+                    assert result[0].step_index == 0
+                    assert result[0].gsar_label == "Grounded"
+                    assert result[0].g_score == 0.9
+
+    def test_classify_fallback_to_stub_on_error(self):
+        """Verify fallback to stub when LLM call raises exception."""
+        with patch("agent_trust_lab.llm.get_api_key", return_value="mock-key"):
+            with patch("agent_trust_lab.llm.create_openai_client",
+                       side_effect=Exception("API down")):
+                classifier = GSARClassifier()
+                steps = [TrajectoryStep(type="thought", content="s")]
+                result = classifier.classify(steps, [])
+                assert len(result) == 1
+                assert "stub" in result[0].explanation.lower()
 
 
 class TestFaithfulnessChecker:

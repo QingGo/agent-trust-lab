@@ -180,10 +180,13 @@ class Orchestrator:
             is_benign=trap.trap_type in ("benign_control", "benign_code_control"),
         )
 
-        hallu_steps, code_hallus = self._run_hallukg(
-            trajectory=trajectory,
-            is_code_agent=trap.category == "code_agent",
-        )
+        hallu_steps: List[HalluStepReport] = []
+        code_hallus: List[CodeHalluReport] = []
+        if not self.config.skip_hallukg:
+            hallu_steps, code_hallus = self._run_hallukg(
+                trajectory=trajectory,
+                is_code_agent=trap.category == "code_agent",
+            )
 
         return EvaluationResult(
             trap_id=trap.trap_id,
@@ -221,9 +224,9 @@ class Orchestrator:
         from agent_trust_lab.hallukg.classifier import GSARClassifier
         from agent_trust_lab.hallukg.extractor import TripleExtractor
 
-        extractor = TripleExtractor(model_name=self.config.model)
+        extractor = TripleExtractor(model=self.config.model)
         reasoner = AnchoringReasoner(knowledge_base_path=self.config.anchor_kb)
-        classifier = GSARClassifier()
+        classifier = GSARClassifier(model=self.config.model)
 
         all_triples = []
         for step in trajectory.steps:

@@ -24,6 +24,7 @@ class EvaluationConfig:
     codebase_path: Optional[str] = None
     test_suite_path: Optional[str] = None
     dry_run: bool = False
+    skip_hallukg: bool = False
     timeout: int = 120
 
     def __post_init__(self) -> None:

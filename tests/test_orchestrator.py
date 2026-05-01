@@ -1,6 +1,7 @@
 import os
 import tempfile
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
@@ -59,6 +60,12 @@ def config(trap_data_dir):
 
 
 class TestOrchestrator:
+    @pytest.fixture(autouse=True)
+    def _stub_hallukg(self):
+        """Force hallukg engines to use stub fallback during tests."""
+        with patch("agent_trust_lab.llm.get_api_key", return_value=None):
+            yield
+
     def test_resolve_harness_docker(self, config):
         orch = Orchestrator(config)
         harness = orch.resolve_harness()

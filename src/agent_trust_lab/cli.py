@@ -299,6 +299,9 @@ def run(
         None, "--limit", help="Max number of traps to run (with --category)"
     ),
     report: Optional[str] = typer.Option(None, "--report", help="JSON report output path"),
+    skip_hallukg: bool = typer.Option(
+        False, "--skip-hallukg", help="Skip hallucination evaluation (cost control)"
+    ),
     verbose: int = typer.Option(
         0, "--verbose", "-v", count=True, help="Increase verbosity (-v for INFO, -vv for DEBUG)"
     ),
@@ -320,6 +323,7 @@ def run(
             "sandbox_image": sandbox_image or "",
             "sandbox_network": sandbox_network,
             "docker_host": docker_host or "",
+            "skip_hallukg": skip_hallukg,
         },
         trap_file=trap_file,
         trap_id=trap_id,
@@ -366,6 +370,9 @@ def run_code(
     seed: Optional[int] = typer.Option(None, "--seed", help="Mutation seed for reproducibility"),
     limit: Optional[int] = typer.Option(None, "--limit", help="Max number of traps to run"),
     report: Optional[str] = typer.Option(None, "--report", help="JSON report output path"),
+    skip_hallukg: bool = typer.Option(
+        False, "--skip-hallukg", help="Skip hallucination evaluation (cost control)"
+    ),
     verbose: int = typer.Option(
         0, "--verbose", "-v", count=True, help="Increase verbosity (-v for INFO, -vv for DEBUG)"
     ),
@@ -387,6 +394,7 @@ def run_code(
             "sandbox_image": sandbox_image or "",
             "sandbox_network": sandbox_network,
             "docker_host": docker_host or "",
+            "skip_hallukg": skip_hallukg,
             "codebase_path": codebase,
         },
         trap_file=trap_file,
