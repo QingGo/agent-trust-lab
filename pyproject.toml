@@ -1,0 +1,51 @@
+[project]
+name = "agent-trust-lab"
+version = "0.1.0"
+description = "Agent reliability and hallucination evaluation toolkit"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "instructor>=0.7.0",
+    "openai>=1.0.0",           # 用于调用 DeepSeek 等兼容接口
+    "networkx>=3.2",
+    "scikit-learn>=1.3.0",
+    "pyyaml>=6.0",
+    "jinja2>=3.1",
+    "typer>=0.9.0",
+    "rich>=13.0",
+    "langchain>=0.2.0",
+    "langchain-openai>=0.1.0",
+    "gradio>=4.0",
+]
+[project.scripts]
+agent-trust-lab = "agent_trust_lab.cli:app"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/agent_trust_lab"]
+
+[tool.uv]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+    "pytest-mock>=3.12",
+    "black>=24.0",
+    "ruff>=0.3.0",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.format]
+quote-style = "double"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
