@@ -84,6 +84,21 @@ class TrapManager:
     def trap_count(self) -> int:
         return len(self._traps)
 
+    @staticmethod
+    def _load_single_file(filepath: str) -> Optional[EnhancedTrapDef]:
+        """Load a single trap from a YAML file path. Returns None on failure."""
+        if not os.path.isfile(filepath):
+            return None
+        try:
+            with open(filepath, "r", encoding="utf-8") as f:
+                data = yaml.safe_load(f)
+            if data is None:
+                return None
+            return EnhancedTrapDef(**data)
+        except Exception as e:
+            print(f"Warning: Failed to load trap from {filepath}: {e}")
+            return None
+
     def apply_mutation(
         self,
         trap: EnhancedTrapDef,

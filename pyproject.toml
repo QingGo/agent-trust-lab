@@ -35,6 +35,7 @@ dev = [
     "pytest-mock>=3.12",
     "black>=24.0",
     "ruff>=0.3.0",
+    "basedpyright>=1.0",
 ]
 
 [tool.ruff]
@@ -49,3 +50,13 @@ select = ["E", "F", "I", "N", "W"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[tool.basedpyright]
+include = ["src"]
+exclude = ["**/__pycache__", ".venv", "tests"]
+pythonVersion = "3.10"
+typeCheckingMode = "standard"
+reportMissingTypeStubs = false
+reportUnknownMemberType = false
+reportUnknownArgumentType = false
+reportUnknownVariableType = false

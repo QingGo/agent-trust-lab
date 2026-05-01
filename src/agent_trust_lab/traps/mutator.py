@@ -1,14 +1,25 @@
 import copy
 import random
+import re
 import string
 import uuid
 from typing import Optional
 
 from agent_trust_lab.models.trap import EnhancedTrapDef
 
+_TEMPLATE_RE = re.compile(r"\{\{(\w+)\}\}")
+
 
 class FieldMutator:
-    """Applies field-level mutations to trap definitions based on variation_rules."""
+    """Applies field-level and template-interpolation mutations to trap definitions.
+
+    Two modes:
+    1. Template interpolation: if the field value contains ``{{generator_name}}``
+       patterns, each placeholder is replaced with the corresponding generator output.
+       The ``VariationRule.generator`` is ignored in this mode.
+    2. Field-level replacement: if no templates are found, the entire field value
+       is replaced with the output of ``VariationRule.generator`` (legacy mode).
+    """
 
     def __init__(self, seed: Optional[int] = None):
         self.rng = random.Random(seed)
@@ -24,11 +35,23 @@ class FieldMutator:
         mutated = copy.deepcopy(trap)
 
         for rule in trap.variation_rules:
-            new_value = self._generate(rule.generator)
-            if hasattr(mutated, rule.field):
+            if not hasattr(mutated, rule.field):
+                continue
+            current = getattr(mutated, rule.field)
+            if isinstance(current, str) and _TEMPLATE_RE.search(current):
+                new_value = self._interpolate(current)
+                setattr(mutated, rule.field, new_value)
+            else:
+                new_value = self._generate(rule.generator)
                 setattr(mutated, rule.field, new_value)
 
         return mutated
+
+    def _interpolate(self, text: str) -> str:
+        def _replacer(match: re.Match) -> str:
+            return self._generate(match.group(1))
+
+        return _TEMPLATE_RE.sub(_replacer, text)
 
     def _generate(self, generator: str) -> str:
         """Dispatch to the appropriate generator function."""

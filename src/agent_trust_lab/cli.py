@@ -232,35 +232,152 @@ def validate_traps():
 
 @app.command()
 def run(
-    trap_file: Optional[str] = typer.Option(None, "--trap-file", help="Path to trap YAML file"),
+    trap_file: Optional[str] = typer.Option(
+        None, "--trap-file", help="Path to trap YAML file (loads single trap)"
+    ),
+    trap_id: Optional[str] = typer.Option(
+        None, "--trap-id", help="Trap ID to run (from trap library)"
+    ),
     agent_type: str = typer.Option("langchain", "--agent-type", help="Agent harness type"),
     model: str = typer.Option("gpt-4o-mini", "--model", help="LLM model to use"),
-    sandbox: str = typer.Option("docker", "--sandbox", help="Sandbox backend"),
-    anchor_source: Optional[str] = typer.Option(
-        None, "--anchor-source", help="Knowledge base path"
+    sandbox: str = typer.Option("docker", "--sandbox", help="Sandbox backend (docker, dry-run)"),
+    mutate: bool = typer.Option(
+        False, "--mutate", help="Apply field variation to the trap before running"
     ),
-    report: Optional[str] = typer.Option(None, "--report", help="Report output path"),
+    seed: Optional[int] = typer.Option(None, "--seed", help="Mutation seed for reproducibility"),
+    category: Optional[str] = typer.Option(
+        None, "--category", "-c", help="Run all traps in category (general_agent, code_agent)"
+    ),
+    limit: Optional[int] = typer.Option(
+        None, "--limit", help="Max number of traps to run (with --category)"
+    ),
+    report: Optional[str] = typer.Option(None, "--report", help="JSON report output path"),
 ):
-    """Run general agent evaluation (coming in next iteration)."""
-    console.print(
-        "[yellow]The 'run' command is not yet implemented."
-        " It will evaluate a general agent against traps.[/yellow]"
+    """Run general agent evaluation against traps."""
+    from agent_trust_lab.config import EvaluationConfig
+    from agent_trust_lab.orchestrator import Orchestrator
+    from agent_trust_lab.traps.manager import TrapManager
+
+    config = EvaluationConfig(
+        agent_type=agent_type,
+        model=model,
+        sandbox=sandbox,
+        trap_library_path=str(_get_traps_data_dir()),
     )
-    raise typer.Exit(code=1)
+
+    if trap_file:
+        trap = TrapManager._load_single_file(trap_file)
+        if trap is None:
+            console.print(f"[red]Failed to load trap from {trap_file}[/red]")
+            raise typer.Exit(code=1)
+        orchestrator = Orchestrator(config)
+        results = orchestrator.run_traps(
+            trap_ids=[trap.trap_id], mutate=mutate, mutation_seed=seed
+        )
+    elif trap_id:
+        orchestrator = Orchestrator(config)
+        results = orchestrator.run_traps(
+            trap_ids=[trap_id], mutate=mutate, mutation_seed=seed
+        )
+    elif category:
+        orchestrator = Orchestrator(config)
+        results = orchestrator.run_traps(
+            category=category, mutate=mutate, mutation_seed=seed, limit=limit
+        )
+    else:
+        console.print("[yellow]Specify --trap-file, --trap-id, or --category.[/yellow]")
+        raise typer.Exit(code=1)
+
+    _display_results(results)
+
+    if report:
+        orchestrator.export_results(results, report)
+        console.print(f"\n[green]Report saved to {report}[/green]")
 
 
 @app.command()
 def run_code(
-    trap_file: Optional[str] = typer.Option(None, "--trap-file", help="Path to trap YAML file"),
+    trap_file: Optional[str] = typer.Option(
+        None, "--trap-file", help="Path to trap YAML file (loads single trap)"
+    ),
+    trap_id: Optional[str] = typer.Option(
+        None, "--trap-id", help="Trap ID to run (from trap library)"
+    ),
     agent_type: str = typer.Option("codex", "--agent-type", help="Agent harness type"),
+    model: str = typer.Option("gpt-4o-mini", "--model", help="LLM model to use"),
     codebase: Optional[str] = typer.Option(None, "--codebase", help="Codebase path"),
-    sandbox: str = typer.Option("docker", "--sandbox", help="Sandbox backend"),
-    test_suite: Optional[str] = typer.Option(None, "--test-suite", help="Test suite path"),
-    report: Optional[str] = typer.Option(None, "--report", help="Report output path"),
+    sandbox: str = typer.Option("docker", "--sandbox", help="Sandbox backend (docker, dry-run)"),
+    mutate: bool = typer.Option(
+        False, "--mutate", help="Apply field variation to the trap before running"
+    ),
+    seed: Optional[int] = typer.Option(None, "--seed", help="Mutation seed for reproducibility"),
+    limit: Optional[int] = typer.Option(
+        None, "--limit", help="Max number of traps to run"
+    ),
+    report: Optional[str] = typer.Option(None, "--report", help="JSON report output path"),
 ):
-    """Run code agent evaluation (coming in next iteration)."""
-    console.print(
-        "[yellow]The 'run-code' command is not yet implemented."
-        " It will evaluate a code agent against traps.[/yellow]"
+    """Run code agent evaluation against traps."""
+    from agent_trust_lab.config import EvaluationConfig
+    from agent_trust_lab.orchestrator import Orchestrator
+    from agent_trust_lab.traps.manager import TrapManager
+
+    config = EvaluationConfig(
+        agent_type=agent_type,
+        model=model,
+        sandbox=sandbox,
+        codebase_path=codebase,
+        trap_library_path=str(_get_traps_data_dir()),
     )
-    raise typer.Exit(code=1)
+
+    if trap_file:
+        trap = TrapManager._load_single_file(trap_file)
+        if trap is None:
+            console.print(f"[red]Failed to load trap from {trap_file}[/red]")
+            raise typer.Exit(code=1)
+        orchestrator = Orchestrator(config)
+        results = orchestrator.run_traps(
+            trap_ids=[trap.trap_id], mutate=mutate, mutation_seed=seed
+        )
+    elif trap_id:
+        orchestrator = Orchestrator(config)
+        results = orchestrator.run_traps(
+            trap_ids=[trap_id], mutate=mutate, mutation_seed=seed
+        )
+    else:
+        orchestrator = Orchestrator(config)
+        results = orchestrator.run_traps(
+            category="code_agent", mutate=mutate, mutation_seed=seed, limit=limit
+        )
+
+    _display_results(results)
+
+    if report:
+        orchestrator.export_results(results, report)
+        console.print(f"\n[green]Report saved to {report}[/green]")
+
+
+def _display_results(results):
+    """Display evaluation results in a table."""
+    from rich.table import Table
+
+    table = Table(title=f"Evaluation Results ({len(results)} traps)")
+    table.add_column("Trap ID", style="cyan", no_wrap=True)
+    table.add_column("Type", style="green")
+    table.add_column("Category", style="blue")
+    table.add_column("Steps", style="yellow")
+    table.add_column("Events", style="red")
+    table.add_column("Violations", style="magenta")
+    table.add_column("Mutated", style="dim")
+
+    for r in results:
+        table.add_row(
+            r.trap_id,
+            r.trap_type,
+            r.category,
+            str(len(r.trajectory.steps)),
+            str(len(r.trajectory.security_events)),
+            str(len(r.trajectory.policy_violations)),
+            "yes" if r.mutated else "no",
+        )
+
+    console.print(table)

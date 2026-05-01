@@ -85,6 +85,92 @@ class TestFieldMutator:
 
         assert mutated1.trap_injection != mutated2.trap_injection
 
+    def test_template_interpolation_single_placeholder(self):
+        trap = EnhancedTrapDef(
+            trap_id="template_test",
+            trap_type="parameter_hallucination",
+            severity="medium",
+            difficulty="medium",
+            category="general_agent",
+            base_task="Task: use {{fake_parameter_name}} in query.",
+            trap_injection="Original injection with {{fake_api_signature}} call.",
+            variation_rules=[
+                VariationRule(field="trap_injection", generator="fake_api_signature"),
+                VariationRule(field="base_task", generator="fake_parameter_name"),
+            ],
+        )
+
+        mutator = FieldMutator(seed=42)
+        mutated = mutator.mutate(trap)
+
+        assert mutated.trap_injection != trap.trap_injection
+        assert "{{" not in mutated.trap_injection
+        assert "{{" not in mutated.base_task
+
+    def test_template_interpolation_multiple_placeholders(self):
+        trap = EnhancedTrapDef(
+            trap_id="multi_template",
+            trap_type="parameter_hallucination",
+            severity="medium",
+            difficulty="medium",
+            category="general_agent",
+            base_task="Normal task.",
+            trap_injection="Use {{fake_parameter_name}} on {{fake_url}} with {{fake_domain_name}}.",
+            variation_rules=[
+                VariationRule(field="trap_injection", generator="fake_parameter_name"),
+            ],
+        )
+
+        mutator = FieldMutator(seed=42)
+        mutated = mutator.mutate(trap)
+
+        assert "{{" not in mutated.trap_injection
+        assert "{{fake_parameter_name}}" not in mutated.trap_injection
+        assert "{{fake_url}}" not in mutated.trap_injection
+        assert "{{fake_domain_name}}" not in mutated.trap_injection
+
+    def test_template_interpolation_seed_reproducibility(self):
+        trap = EnhancedTrapDef(
+            trap_id="template_seed",
+            trap_type="parameter_hallucination",
+            severity="medium",
+            difficulty="medium",
+            category="general_agent",
+            base_task="Task.",
+            trap_injection="Use {{fake_parameter_name}}.",
+            variation_rules=[
+                VariationRule(field="trap_injection", generator="fake_parameter_name"),
+            ],
+        )
+
+        mutator1 = FieldMutator(seed=99)
+        mutated1 = mutator1.mutate(trap)
+
+        mutator2 = FieldMutator(seed=99)
+        mutated2 = mutator2.mutate(trap)
+
+        assert mutated1.trap_injection == mutated2.trap_injection
+
+    def test_template_interpolation_no_templates_falls_back(self):
+        trap = EnhancedTrapDef(
+            trap_id="no_template",
+            trap_type="parameter_hallucination",
+            severity="medium",
+            difficulty="medium",
+            category="general_agent",
+            base_task="Normal task.",
+            trap_injection="Plain text without templates.",
+            variation_rules=[
+                VariationRule(field="trap_injection", generator="fake_parameter_name"),
+            ],
+        )
+
+        mutator = FieldMutator(seed=42)
+        mutated = mutator.mutate(trap)
+
+        assert mutated.trap_injection != trap.trap_injection
+        assert "{{" not in mutated.trap_injection
+
     def test_unknown_generator_fallback(self):
         trap = EnhancedTrapDef(
             trap_id="unknown_gen",
