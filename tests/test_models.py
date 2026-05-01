@@ -160,7 +160,7 @@ class TestEvaluationConfig:
     def test_defaults(self):
         config = EvaluationConfig()
         assert config.agent_type == "langchain"
-        assert config.model == "gpt-4o-mini"
+        assert config.model == "deepseek-v4-flash"
         assert config.sandbox == "docker"
         assert config.max_steps == 10
 

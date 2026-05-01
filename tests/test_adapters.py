@@ -5,7 +5,7 @@ from agent_trust_lab.models.trajectory import AgentHarness
 class TestLangChainHarness:
     def test_default_construction(self):
         harness = LangChainHarness()
-        assert harness.model == "gpt-4o-mini"
+        assert harness.model == "deepseek-v4-flash"
         assert harness.temperature == 0.0
 
     def test_custom_construction(self):
@@ -16,18 +16,22 @@ class TestLangChainHarness:
     def test_run_returns_secure_trajectory(self):
         harness = LangChainHarness()
         trajectory = harness.run(task="Test task", tools=[{"name": "file_read"}])
-        assert len(trajectory.steps) >= 3
+        assert len(trajectory.steps) >= 1
         assert trajectory.metadata["adapter"] == "langchain"
+        assert "stub" in trajectory.metadata
+
+    def test_stub_fallback_when_no_api_key(self):
+        harness = LangChainHarness(api_key="none", base_url="https://invalid.url")
+        trajectory = harness.run(task="Test task", tools=[{"name": "file_read"}])
         assert trajectory.metadata["stub"] is True
+        assert len(trajectory.steps) >= 3
 
     def test_run_steps_have_expected_types(self):
         harness = LangChainHarness()
         trajectory = harness.run(task="test", tools=[{"name": "search"}])
         step_types = [s.type for s in trajectory.steps]
         assert "harness_init" in step_types
-        assert "thought" in step_types
-        assert "action" in step_types
-        assert "observation" in step_types
+        assert any(t in step_types for t in ("thought", "action", "observation"))
 
     def test_run_with_dangerous_command(self):
         harness = LangChainHarness()

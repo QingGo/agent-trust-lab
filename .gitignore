@@ -13,6 +13,9 @@ wheels/
 .ruff_cache/
 .pytest_cache/
 
+# environment
+.env
+
 # project
 docs/
 !docs/implementation_notes.md

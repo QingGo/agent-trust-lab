@@ -239,7 +239,10 @@ def run(
         None, "--trap-id", help="Trap ID to run (from trap library)"
     ),
     agent_type: str = typer.Option("langchain", "--agent-type", help="Agent harness type"),
-    model: str = typer.Option("gpt-4o-mini", "--model", help="LLM model to use"),
+    model: str = typer.Option("deepseek-v4-flash", "--model", help="LLM model to use"),
+    base_url: Optional[str] = typer.Option(
+        None, "--base-url", help="LLM API base URL (default: https://api.deepseek.com)"
+    ),
     sandbox: str = typer.Option("docker", "--sandbox", help="Sandbox backend (docker, dry-run)"),
     mutate: bool = typer.Option(
         False, "--mutate", help="Apply field variation to the trap before running"
@@ -261,6 +264,7 @@ def run(
     config = EvaluationConfig(
         agent_type=agent_type,
         model=model,
+        base_url=base_url or "",
         sandbox=sandbox,
         trap_library_path=str(_get_traps_data_dir()),
     )
@@ -304,7 +308,10 @@ def run_code(
         None, "--trap-id", help="Trap ID to run (from trap library)"
     ),
     agent_type: str = typer.Option("codex", "--agent-type", help="Agent harness type"),
-    model: str = typer.Option("gpt-4o-mini", "--model", help="LLM model to use"),
+    model: str = typer.Option("deepseek-v4-flash", "--model", help="LLM model to use"),
+    base_url: Optional[str] = typer.Option(
+        None, "--base-url", help="LLM API base URL (default: https://api.deepseek.com)"
+    ),
     codebase: Optional[str] = typer.Option(None, "--codebase", help="Codebase path"),
     sandbox: str = typer.Option("docker", "--sandbox", help="Sandbox backend (docker, dry-run)"),
     mutate: bool = typer.Option(
@@ -324,6 +331,7 @@ def run_code(
     config = EvaluationConfig(
         agent_type=agent_type,
         model=model,
+        base_url=base_url or "",
         sandbox=sandbox,
         codebase_path=codebase,
         trap_library_path=str(_get_traps_data_dir()),

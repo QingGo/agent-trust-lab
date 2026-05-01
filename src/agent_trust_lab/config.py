@@ -5,7 +5,9 @@ from typing import List, Optional
 @dataclass
 class EvaluationConfig:
     agent_type: str = "langchain"
-    model: str = "gpt-4o-mini"
+    model: str = "deepseek-v4-flash"
+    api_key: str = ""
+    base_url: str = ""
     sandbox: str = "docker"
     anchor_kb: str = "./kb/"
     trap_library_path: str = "./traps/"

@@ -92,7 +92,11 @@ class Orchestrator:
         if agent == "langchain":
             from agent_trust_lab.adapters.harnesses import LangChainHarness
 
-            return LangChainHarness(model=self.config.model)
+            return LangChainHarness(
+                model=self.config.model,
+                api_key=self.config.api_key,
+                base_url=self.config.base_url,
+            )
 
         if agent == "openai":
             from agent_trust_lab.adapters.harnesses import OpenAIFunctionHarness
