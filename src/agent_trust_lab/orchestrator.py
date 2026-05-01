@@ -242,7 +242,9 @@ class Orchestrator:
         if is_code_agent:
             from agent_trust_lab.hallukg.code_checker import CodeHalluChecker
 
-            code_checker = CodeHalluChecker(timeout=self.config.timeout)
+            code_checker = CodeHalluChecker(
+                timeout=self.config.timeout, docker_host=self.config.docker_host
+            )
             code_hallus = code_checker.batch_check(trajectory)
 
         return hallucination_steps, code_hallus

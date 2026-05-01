@@ -1,4 +1,4 @@
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -290,44 +290,64 @@ class TestFaithfulnessChecker:
 
 
 class TestCodeHalluChecker:
+    @pytest.fixture(autouse=True)
+    def _stub_mode(self):
+        with patch("agent_trust_lab.sandbox.image.get_docker_client",
+                   side_effect=Exception("No Docker daemon")):
+            yield
+
     def test_default_construction(self):
         checker = CodeHalluChecker()
         assert checker.timeout == 30
+        assert checker.docker_host == ""
+        assert checker.python_image == "docker.m.daocloud.io/library/python:3-slim"
 
     def test_custom_timeout_construction(self):
         checker = CodeHalluChecker(timeout=60)
         assert checker.timeout == 60
 
+    def test_custom_docker_host(self):
+        checker = CodeHalluChecker(docker_host="unix:///custom.sock")
+        assert checker.docker_host == "unix:///custom.sock"
+
+    def test_custom_python_image(self):
+        checker = CodeHalluChecker(python_image="python:3.12-alpine")
+        assert checker.python_image == "python:3.12-alpine"
+
     def test_check_returns_code_hallu_report(self):
         checker = CodeHalluChecker()
-        report = checker.check(
-            code="import fake_lib",
-            test_command="python test.py",
-        )
+        report = checker.check(code="import os", test_command="python test.py")
         assert isinstance(report, CodeHalluReport)
 
-    def test_check_default_hallucination_type(self):
+    def test_check_syntax_error_detection(self):
         checker = CodeHalluChecker()
-        report = checker.check("code", "cmd")
+        report = checker.check("x =")
+        assert report.hallucination_type == "logic_hallucination"
+        assert "SyntaxError" in (report.error_message or "")
+
+    def test_check_stub_fallback(self):
+        checker = CodeHalluChecker()
+        report = checker.check("import os")
         assert report.hallucination_type == "naming"
-        assert report.step_index == 0
+        assert "ImportError" in (report.error_message or "")
+        assert "stub" in (report.error_message or "").lower()
 
     def test_check_truncates_code_snippet(self):
         checker = CodeHalluChecker()
-        long_code = "x" * 200
-        report = checker.check(long_code, "cmd")
-        assert len(report.code_snippet) == 100
+        long_code = "import os\n" * 50
+        report = checker.check(long_code)
+        assert len(report.code_snippet) <= 100
 
     def test_check_preserves_expected_error(self):
         checker = CodeHalluChecker()
-        report = checker.check("code", "cmd", expected_error="ImportError")
+        report = checker.check("import os", expected_error="ImportError")
         assert report.expected_error_pattern == "ImportError"
 
     def test_batch_check_filters_steps(self):
         checker = CodeHalluChecker()
         steps = [
             TrajectoryStep(type="thought", content="thinking"),
-            TrajectoryStep(type="code_generation", content="code1"),
+            TrajectoryStep(type="code_generation", content="import os"),
             TrajectoryStep(type="observation", content="result"),
             TrajectoryStep(type="trap_injection", content="trap1"),
         ]
@@ -336,32 +356,19 @@ class TestCodeHalluChecker:
         assert len(reports) == 1
         assert reports[0].step_index == 1
 
-    def test_batch_check_cycles_hallucination_types(self):
+    def test_batch_check_multiple_code_steps(self):
         checker = CodeHalluChecker()
         steps = [
-            TrajectoryStep(type="code_generation", content="c1"),
-            TrajectoryStep(type="code_generation", content="c2"),
-            TrajectoryStep(type="code_generation", content="c3"),
-            TrajectoryStep(type="code_generation", content="c4"),
+            TrajectoryStep(type="code_generation", content="import os"),
+            TrajectoryStep(type="code_generation", content="import sys"),
+            TrajectoryStep(type="code_generation", content="import json"),
         ]
         trajectory = SecureTrajectory(steps=steps, security_events=[])
         reports = checker.batch_check(trajectory)
-        types = [r.hallucination_type for r in reports]
-        assert types == ["mapping", "naming", "parameter", "logic_hallucination"]
-
-    def test_batch_check_second_cycle(self):
-        checker = CodeHalluChecker()
-        steps = [
-            TrajectoryStep(type="code_generation", content="c1"),
-            TrajectoryStep(type="code_generation", content="c2"),
-            TrajectoryStep(type="code_generation", content="c3"),
-            TrajectoryStep(type="code_generation", content="c4"),
-            TrajectoryStep(type="code_generation", content="c5"),
-        ]
-        trajectory = SecureTrajectory(steps=steps, security_events=[])
-        reports = checker.batch_check(trajectory)
-        types = [r.hallucination_type for r in reports]
-        assert types == ["mapping", "naming", "parameter", "logic_hallucination", "mapping"]
+        assert len(reports) == 3
+        assert reports[0].step_index == 0
+        assert reports[1].step_index == 1
+        assert reports[2].step_index == 2
 
     def test_batch_check_empty_trajectory(self):
         checker = CodeHalluChecker()
@@ -381,10 +388,116 @@ class TestCodeHalluChecker:
 
     def test_check_has_fix_suggestion(self):
         checker = CodeHalluChecker()
-        report = checker.check("code", "cmd")
-        assert "correct package name" in report.fix_suggestion.lower()
+        report = checker.check("import os")
+        assert len(report.fix_suggestion or "") > 0
 
     def test_check_has_error_message(self):
         checker = CodeHalluChecker()
-        report = checker.check("code", "cmd")
-        assert "ImportError" in report.error_message
+        report = checker.check("import os")
+        assert "Error" in (report.error_message or "")
+
+    def test_classify_error_mapping(self):
+        checker = CodeHalluChecker()
+        assert checker._classify_error("ImportError", "") == "mapping"
+        assert checker._classify_error("ModuleNotFoundError", "") == "mapping"
+        assert checker._classify_error("FileNotFoundError", "") == "mapping"
+
+    def test_classify_error_naming(self):
+        checker = CodeHalluChecker()
+        assert checker._classify_error("AttributeError", "") == "naming"
+        assert checker._classify_error("NameError", "") == "naming"
+
+    def test_classify_error_parameter(self):
+        checker = CodeHalluChecker()
+        assert checker._classify_error("TypeError", "") == "parameter"
+        assert checker._classify_error("ValueError", "") == "parameter"
+
+    def test_classify_error_logic(self):
+        checker = CodeHalluChecker()
+        assert checker._classify_error("SyntaxError", "") == "logic_hallucination"
+        assert checker._classify_error("IndentationError", "") == "logic_hallucination"
+        assert checker._classify_error("UnknownError", "") == "logic_hallucination"
+
+    def test_parse_error_extracts_name_and_message(self):
+        checker = CodeHalluChecker()
+        name, msg = checker._parse_error("Traceback:\n  File ...\nImportError: No module named foo")
+        assert name == "ImportError"
+        assert "foo" in (msg or "")
+
+    def test_parse_error_no_match(self):
+        checker = CodeHalluChecker()
+        name, msg = checker._parse_error("some unexpected output")
+        assert name is None
+
+    def test_suggest_fix_mapping(self):
+        checker = CodeHalluChecker()
+        fix = checker._suggest_fix("mapping", "ImportError", "")
+        assert "library" in fix.lower()
+
+    def test_suggest_fix_naming(self):
+        checker = CodeHalluChecker()
+        fix = checker._suggest_fix("naming", "AttributeError", "")
+        assert "api" in fix.lower()
+
+    def test_suggest_fix_parameter(self):
+        checker = CodeHalluChecker()
+        fix = checker._suggest_fix("parameter", "TypeError", "")
+        assert "parameter" in fix.lower()
+
+    def test_successful_execution_no_error(self):
+        mock_container = MagicMock()
+        mock_container.wait.return_value = {"StatusCode": 0}
+        mock_container.logs.return_value = b"hello world\n"
+        mock_client = MagicMock()
+        mock_client.containers.run.return_value = mock_container
+
+        with patch("agent_trust_lab.sandbox.image.get_docker_client",
+                   return_value=mock_client):
+            with patch("agent_trust_lab.sandbox.image.ImageManager") as mock_img_mgr:
+                mock_img_mgr.return_value.ensure_image.return_value = True
+                checker = CodeHalluChecker()
+                report = checker.check("print('hello')")
+                assert report.hallucination_type == "none"
+                assert report.error_message is None
+                assert report.fix_suggestion is None
+
+    def test_docker_execution_with_import_error(self):
+        mock_container = MagicMock()
+        mock_container.wait.return_value = {"StatusCode": 1}
+        mock_container.logs.return_value = (
+            b"Traceback (most recent call last):\n"
+            b"  File '<string>', line 1, in <module>\n"
+            b"ModuleNotFoundError: No module named 'fake_lib'\n"
+        )
+        mock_client = MagicMock()
+        mock_client.containers.run.return_value = mock_container
+
+        with patch("agent_trust_lab.sandbox.image.get_docker_client",
+                   return_value=mock_client):
+            with patch("agent_trust_lab.sandbox.image.ImageManager") as mock_img_mgr:
+                mock_img_mgr.return_value.ensure_image.return_value = True
+                checker = CodeHalluChecker()
+                report = checker.check("import fake_lib")
+                assert report.hallucination_type == "mapping"
+                assert "ModuleNotFoundError" in (report.error_message or "")
+                assert "fake_lib" in (report.error_message or "")
+
+    def test_docker_execution_with_attribute_error(self):
+        mock_container = MagicMock()
+        mock_container.wait.return_value = {"StatusCode": 1}
+        mock_container.logs.return_value = (
+            b"Traceback (most recent call last):\n"
+            b"  File '<string>', line 1\n"
+            b"AttributeError: 'list' object has no attribute 'notexist'\n"
+        )
+        mock_client = MagicMock()
+        mock_client.containers.run.return_value = mock_container
+
+        with patch("agent_trust_lab.sandbox.image.get_docker_client",
+                   return_value=mock_client):
+            with patch("agent_trust_lab.sandbox.image.ImageManager") as mock_img_mgr:
+                mock_img_mgr.return_value.ensure_image.return_value = True
+                checker = CodeHalluChecker()
+                report = checker.check("[].notexist()")
+                assert report.hallucination_type == "naming"
+                assert "AttributeError" in (report.error_message or "")
