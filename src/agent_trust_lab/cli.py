@@ -449,3 +449,39 @@ def _display_results(results):
             f"\n[bold]Summary:[/bold] {passed_comp}/{total} compliance pass, "
             f"avg G-score: {avg_g:.2f}, avg faithfulness: {avg_f:.2f}"
         )
+
+
+@app.command()
+def report(
+    json_path: str = typer.Argument(..., help="Path to JSON report file (from --report export)"),
+    output: Optional[str] = typer.Option(
+        None, "--output", "-o", help="Output HTML file path (default: same name, .html extension)"
+    ),
+    open_browser: bool = typer.Option(
+        False, "--open", help="Open the generated report in the browser"
+    ),
+):
+    """Generate an HTML evaluation report from a JSON export file."""
+    from pathlib import Path
+
+    from agent_trust_lab.report import ReportGenerator
+
+    path = Path(json_path)
+    if not path.is_file():
+        console.print(f"[red]File not found: {json_path}[/red]")
+        raise typer.Exit(code=1)
+
+    output_path = output or str(path.with_suffix(".html"))
+    generator = ReportGenerator()
+    with open(json_path, "r", encoding="utf-8") as f:
+        import json
+
+        data = json.load(f)
+    generator.generate(data, output_path=output_path)
+    console.print(f"[green]HTML report saved to {output_path}[/green]")
+
+    if open_browser:
+        import webbrowser
+
+        abs_path = str(Path(output_path).resolve())
+        webbrowser.open(f"file://{abs_path}")
