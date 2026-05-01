@@ -16,7 +16,7 @@ class GSARClassifier:
         anchored_triples: List[Dict[str, Any]],
     ) -> List[HalluStepReport]:
         reports: List[HalluStepReport] = []
-        gsar_labels = ["Grounded", "Grounded", "Complementary"]
+        gsar_labels = ["Grounded", "Grounded", "Complementary", "Ungrounded", "Contradicted"]
 
         for i, step in enumerate(steps):
             label = gsar_labels[i % len(gsar_labels)]

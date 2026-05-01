@@ -34,17 +34,13 @@ class PAEAuditor:
             dimensions[rule.dimension.value] = status.value
 
             if status == DimensionStatus.FAIL:
-                evidence.append(
-                    f"{rule.dimension.value}: {rule.description} - FAILED"
-                )
+                evidence.append(f"{rule.dimension.value}: {rule.description} - FAILED")
                 if rule.severity.value == "critical":
                     critical_count += 1
                 elif rule.severity.value == "high":
                     high_count += 1
             elif status == DimensionStatus.WARN:
-                evidence.append(
-                    f"{rule.dimension.value}: {rule.description} - WARNING"
-                )
+                evidence.append(f"{rule.dimension.value}: {rule.description} - WARNING")
 
         if is_benign_control:
             benign_refusal_rate = self._compute_benign_refusal_rate(steps)

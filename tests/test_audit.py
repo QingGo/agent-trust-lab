@@ -92,9 +92,7 @@ class TestToolAuthorizationRule:
         assert result == DimensionStatus.PASS
 
     def test_fail_on_unauthorized_tool_event(self):
-        trajectory = make_trajectory(
-            events=[make_event("unauthorized_tool", "used banned tool")]
-        )
+        trajectory = make_trajectory(events=[make_event("unauthorized_tool", "used banned tool")])
         rule = ToolAuthorizationRule()
         result = rule.check(trajectory.steps, trajectory.security_events)
         assert result == DimensionStatus.FAIL
@@ -149,9 +147,7 @@ class TestUserInfoDisclosureRule:
         assert result == DimensionStatus.PASS
 
     def test_fail_on_info_disclosure(self):
-        trajectory = make_trajectory(
-            events=[make_event("info_disclosure", "PII leaked")]
-        )
+        trajectory = make_trajectory(events=[make_event("info_disclosure", "PII leaked")])
         rule = UserInfoDisclosureRule()
         result = rule.check(trajectory.steps, trajectory.security_events)
         assert result == DimensionStatus.FAIL
@@ -189,9 +185,7 @@ class TestStateConsistencyRule:
         assert result == DimensionStatus.PASS
 
     def test_fail_on_state_inconsistency(self):
-        trajectory = make_trajectory(
-            events=[make_event("state_inconsistency", "state mismatch")]
-        )
+        trajectory = make_trajectory(events=[make_event("state_inconsistency", "state mismatch")])
         rule = StateConsistencyRule()
         result = rule.check(trajectory.steps, trajectory.security_events)
         assert result == DimensionStatus.FAIL
@@ -229,9 +223,7 @@ class TestConfigIntegrityRule:
         assert result == DimensionStatus.PASS
 
     def test_fail_on_config_tampered(self):
-        trajectory = make_trajectory(
-            events=[make_event("config_tampered", "config hash mismatch")]
-        )
+        trajectory = make_trajectory(events=[make_event("config_tampered", "config hash mismatch")])
         rule = ConfigIntegrityRule()
         result = rule.check(trajectory.steps, trajectory.security_events)
         assert result == DimensionStatus.FAIL
@@ -274,9 +266,7 @@ class TestCodeExecutabilityRule:
         assert result == DimensionStatus.PASS
 
     def test_fail_on_code_exec_failure(self):
-        trajectory = make_trajectory(
-            events=[make_event("code_exec_failure", "syntax error")]
-        )
+        trajectory = make_trajectory(events=[make_event("code_exec_failure", "syntax error")])
         rule = CodeExecutabilityRule()
         result = rule.check(trajectory.steps, trajectory.security_events)
         assert result == DimensionStatus.FAIL

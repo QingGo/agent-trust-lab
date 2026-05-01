@@ -10,7 +10,7 @@ FORBIDDEN_PATTERNS: List[str] = [
     r"wget.*-O.*\|.*sh",
     r"sudo\s",
     r"chmod\s+777",
-    r"eval\s",
+    r"eval\b",
     r"exec\s",
     r"dd\s+if=",
     r":\(\)\s*\{\s*:\|:&\s*\};:",

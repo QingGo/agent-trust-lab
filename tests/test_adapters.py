@@ -41,10 +41,8 @@ class TestLangChainHarness:
 
     def test_run_with_policy_rules(self):
         harness = LangChainHarness()
-        trajectory = harness.run(
-            task="test", tools=[], policy_rules=["Unauthorized access"]
-        )
-        assert "Unauthorized access" in trajectory.policy_violations
+        trajectory = harness.run(task="test", tools=[], policy_rules=["Unauthorized access"])
+        assert "Unauthorized access" in trajectory.policy_rules_applied
 
     def test_is_agent_harness_subclass(self):
         assert isinstance(LangChainHarness(), AgentHarness)

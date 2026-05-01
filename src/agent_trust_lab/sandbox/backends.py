@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
+from agent_trust_lab.log import get_logger
 from agent_trust_lab.models.trajectory import (
     AgentHarness,
     SecureTrajectory,
@@ -8,6 +9,8 @@ from agent_trust_lab.models.trajectory import (
     TrajectoryStep,
 )
 from agent_trust_lab.sandbox.filter import filter_command
+
+logger = get_logger("sandbox.backends")
 
 
 @dataclass
@@ -26,14 +29,14 @@ class DockerSandbox(AgentHarness):
     ) -> SecureTrajectory:
         steps: List[TrajectoryStep] = []
         security_events: List[SecurityEvent] = []
-        policy_violations: List[str] = []
+        policy_rules_applied: List[str] = list(policy_rules) if policy_rules else []
+        actual_violations: List[str] = []
 
         steps.append(
             TrajectoryStep(
                 type="sandbox_init",
                 content=(
-                    f"Docker sandbox initializing: image={self.image}, "
-                    f"timeout={self.timeout}s"
+                    f"Docker sandbox initializing: image={self.image}, timeout={self.timeout}s"
                 ),
                 metadata={"backend": "docker", "image": self.image},
             )
@@ -69,14 +72,12 @@ class DockerSandbox(AgentHarness):
             )
         )
 
-        if policy_rules:
-            policy_violations.extend(policy_rules)
-
         return SecureTrajectory(
             steps=steps,
             security_events=security_events,
             dry_run_log="",
-            policy_violations=policy_violations,
+            policy_rules_applied=policy_rules_applied,
+            actual_violations=actual_violations,
             metadata={"backend": "docker", "image": self.image, "stub": True},
         )
 
@@ -96,7 +97,8 @@ class DryRunSandbox(AgentHarness):
     ) -> SecureTrajectory:
         steps: List[TrajectoryStep] = []
         security_events: List[SecurityEvent] = []
-        policy_violations: List[str] = []
+        policy_rules_applied: List[str] = list(policy_rules) if policy_rules else []
+        actual_violations: List[str] = []
 
         steps.append(
             TrajectoryStep(
@@ -144,18 +146,15 @@ class DryRunSandbox(AgentHarness):
             )
         )
 
-        if policy_rules:
-            policy_violations.extend(policy_rules)
-
         dry_run_log = (
-            f"[DryRun] Task: {task}\n[DryRun] Tools: {tools}\n"
-            f"[DryRun] No writes performed.\n"
+            f"[DryRun] Task: {task}\n[DryRun] Tools: {tools}\n[DryRun] No writes performed.\n"
         )
 
         return SecureTrajectory(
             steps=steps,
             security_events=security_events,
             dry_run_log=dry_run_log,
-            policy_violations=policy_violations,
+            policy_rules_applied=policy_rules_applied,
+            actual_violations=actual_violations,
             metadata={"backend": "dry-run", "stub": True},
         )

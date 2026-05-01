@@ -2,7 +2,7 @@
 
 import os
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 import typer
 from rich.console import Console
@@ -37,6 +37,47 @@ def _get_trap_manager():
     from agent_trust_lab.traps.manager import TrapManager
 
     return TrapManager(str(_get_traps_data_dir()))
+
+
+def _run_evaluation(
+    config_params: dict,
+    trap_file: Optional[str] = None,
+    trap_id: Optional[str] = None,
+    category: Optional[str] = None,
+    mutate: bool = False,
+    seed: Optional[int] = None,
+    limit: Optional[int] = None,
+) -> tuple[Any, Any]:
+    """Shared evaluation setup and execution for run/run_code commands."""
+    from agent_trust_lab.config import EvaluationConfig
+    from agent_trust_lab.orchestrator import Orchestrator
+    from agent_trust_lab.traps.manager import TrapManager
+
+    config = EvaluationConfig(
+        trap_library_path=str(_get_traps_data_dir()),
+        **config_params,
+    )
+
+    if trap_file:
+        trap = TrapManager._load_single_file(trap_file)
+        if trap is None:
+            console.print(f"[red]Failed to load trap from {trap_file}[/red]")
+            raise typer.Exit(code=1)
+        orchestrator = Orchestrator(config)
+        results = orchestrator.run_traps(trap_ids=[trap.trap_id], mutate=mutate, mutation_seed=seed)
+    elif trap_id:
+        orchestrator = Orchestrator(config)
+        results = orchestrator.run_traps(trap_ids=[trap_id], mutate=mutate, mutation_seed=seed)
+    elif category:
+        orchestrator = Orchestrator(config)
+        results = orchestrator.run_traps(
+            category=category, mutate=mutate, mutation_seed=seed, limit=limit
+        )
+    else:
+        console.print("[yellow]Specify --trap-file, --trap-id, or --category.[/yellow]")
+        raise typer.Exit(code=1)
+
+    return orchestrator, results
 
 
 @app.command()
@@ -132,7 +173,6 @@ def show_trap(
                 console.print(syntax)
                 return
 
-        # Fallback: search more broadly
         console.print("[yellow]Raw YAML file not found by exact match.[/yellow]")
         traps = mgr.load_traps(trap_ids=[trap_id])
         if traps:
@@ -141,16 +181,11 @@ def show_trap(
             console.print(json.dumps(traps[0].model_dump(), indent=2, ensure_ascii=False))
         return
 
-    # Rich display
     console.print(f"\n[bold cyan]Trap: {trap.trap_id}[/bold cyan]")
     console.print(f"  [dim]Version:[/dim] {trap.version}")
     console.print(f"  [dim]Type:[/dim] {trap.trap_type}")
     severity_color = (
-        "red"
-        if trap.severity == "high"
-        else "yellow"
-        if trap.severity == "medium"
-        else "green"
+        "red" if trap.severity == "high" else "yellow" if trap.severity == "medium" else "green"
     )
     console.print(f"  [dim]Severity:[/dim] [{severity_color}]{trap.severity}[/]")
     console.print(f"  [dim]Difficulty:[/dim] {trap.difficulty}")
@@ -255,42 +290,32 @@ def run(
         None, "--limit", help="Max number of traps to run (with --category)"
     ),
     report: Optional[str] = typer.Option(None, "--report", help="JSON report output path"),
+    verbose: int = typer.Option(
+        0, "--verbose", "-v", count=True, help="Increase verbosity (-v for INFO, -vv for DEBUG)"
+    ),
+    log_file: Optional[str] = typer.Option(
+        None, "--log-file", help="Write logs to file instead of stderr"
+    ),
 ):
     """Run general agent evaluation against traps."""
-    from agent_trust_lab.config import EvaluationConfig
-    from agent_trust_lab.orchestrator import Orchestrator
-    from agent_trust_lab.traps.manager import TrapManager
+    from agent_trust_lab.log import cli_verbosity_to_level, setup_logging
 
-    config = EvaluationConfig(
-        agent_type=agent_type,
-        model=model,
-        base_url=base_url or "",
-        sandbox=sandbox,
-        trap_library_path=str(_get_traps_data_dir()),
+    setup_logging(level=cli_verbosity_to_level(verbose), log_file=log_file)
+
+    orchestrator, results = _run_evaluation(
+        config_params={
+            "agent_type": agent_type,
+            "model": model,
+            "base_url": base_url or "",
+            "sandbox": sandbox,
+        },
+        trap_file=trap_file,
+        trap_id=trap_id,
+        category=category,
+        mutate=mutate,
+        seed=seed,
+        limit=limit,
     )
-
-    if trap_file:
-        trap = TrapManager._load_single_file(trap_file)
-        if trap is None:
-            console.print(f"[red]Failed to load trap from {trap_file}[/red]")
-            raise typer.Exit(code=1)
-        orchestrator = Orchestrator(config)
-        results = orchestrator.run_traps(
-            trap_ids=[trap.trap_id], mutate=mutate, mutation_seed=seed
-        )
-    elif trap_id:
-        orchestrator = Orchestrator(config)
-        results = orchestrator.run_traps(
-            trap_ids=[trap_id], mutate=mutate, mutation_seed=seed
-        )
-    elif category:
-        orchestrator = Orchestrator(config)
-        results = orchestrator.run_traps(
-            category=category, mutate=mutate, mutation_seed=seed, limit=limit
-        )
-    else:
-        console.print("[yellow]Specify --trap-file, --trap-id, or --category.[/yellow]")
-        raise typer.Exit(code=1)
 
     _display_results(results)
 
@@ -318,44 +343,35 @@ def run_code(
         False, "--mutate", help="Apply field variation to the trap before running"
     ),
     seed: Optional[int] = typer.Option(None, "--seed", help="Mutation seed for reproducibility"),
-    limit: Optional[int] = typer.Option(
-        None, "--limit", help="Max number of traps to run"
-    ),
+    limit: Optional[int] = typer.Option(None, "--limit", help="Max number of traps to run"),
     report: Optional[str] = typer.Option(None, "--report", help="JSON report output path"),
+    verbose: int = typer.Option(
+        0, "--verbose", "-v", count=True, help="Increase verbosity (-v for INFO, -vv for DEBUG)"
+    ),
+    log_file: Optional[str] = typer.Option(
+        None, "--log-file", help="Write logs to file instead of stderr"
+    ),
 ):
     """Run code agent evaluation against traps."""
-    from agent_trust_lab.config import EvaluationConfig
-    from agent_trust_lab.orchestrator import Orchestrator
-    from agent_trust_lab.traps.manager import TrapManager
+    from agent_trust_lab.log import cli_verbosity_to_level, setup_logging
 
-    config = EvaluationConfig(
-        agent_type=agent_type,
-        model=model,
-        base_url=base_url or "",
-        sandbox=sandbox,
-        codebase_path=codebase,
-        trap_library_path=str(_get_traps_data_dir()),
+    setup_logging(level=cli_verbosity_to_level(verbose), log_file=log_file)
+
+    orchestrator, results = _run_evaluation(
+        config_params={
+            "agent_type": agent_type,
+            "model": model,
+            "base_url": base_url or "",
+            "sandbox": sandbox,
+            "codebase_path": codebase,
+        },
+        trap_file=trap_file,
+        trap_id=trap_id,
+        category="code_agent",
+        mutate=mutate,
+        seed=seed,
+        limit=limit,
     )
-
-    if trap_file:
-        trap = TrapManager._load_single_file(trap_file)
-        if trap is None:
-            console.print(f"[red]Failed to load trap from {trap_file}[/red]")
-            raise typer.Exit(code=1)
-        orchestrator = Orchestrator(config)
-        results = orchestrator.run_traps(
-            trap_ids=[trap.trap_id], mutate=mutate, mutation_seed=seed
-        )
-    elif trap_id:
-        orchestrator = Orchestrator(config)
-        results = orchestrator.run_traps(
-            trap_ids=[trap_id], mutate=mutate, mutation_seed=seed
-        )
-    else:
-        orchestrator = Orchestrator(config)
-        results = orchestrator.run_traps(
-            category="code_agent", mutate=mutate, mutation_seed=seed, limit=limit
-        )
 
     _display_results(results)
 
@@ -389,13 +405,9 @@ def _display_results(results):
         g_score = 0.0
         faith = 0.0
         if r.hallucination_steps:
-            g_score = (
-                sum(h.g_score for h in r.hallucination_steps)
-                / len(r.hallucination_steps)
-            )
-            faith = (
-                sum(h.faithfulness_score for h in r.hallucination_steps)
-                / len(r.hallucination_steps)
+            g_score = sum(h.g_score for h in r.hallucination_steps) / len(r.hallucination_steps)
+            faith = sum(h.faithfulness_score for h in r.hallucination_steps) / len(
+                r.hallucination_steps
             )
 
         table.add_row(
@@ -414,7 +426,8 @@ def _display_results(results):
     total = len(results)
     if total > 0:
         passed_comp = sum(
-            1 for r in results
+            1
+            for r in results
             if r.compliance is not None and r.compliance.overall_status() == "pass"
         )
         avg_g = 0.0
@@ -432,5 +445,7 @@ def _display_results(results):
                 for r in hallu_results
             ) / len(hallu_results)
 
-        console.print(f"\n[bold]Summary:[/bold] {passed_comp}/{total} compliance pass, "
-                      f"avg G-score: {avg_g:.2f}, avg faithfulness: {avg_f:.2f}")
+        console.print(
+            f"\n[bold]Summary:[/bold] {passed_comp}/{total} compliance pass, "
+            f"avg G-score: {avg_g:.2f}, avg faithfulness: {avg_f:.2f}"
+        )

@@ -29,11 +29,7 @@ class CodeHalluChecker:
         )
 
     def batch_check(self, trajectory: SecureTrajectory) -> List[CodeHalluReport]:
-        code_steps = [
-            (i, s)
-            for i, s in enumerate(trajectory.steps)
-            if s.type in ("code_generation", "trap_injection")
-        ]
+        code_steps = [(i, s) for i, s in enumerate(trajectory.steps) if s.type == "code_generation"]
         reports: List[CodeHalluReport] = []
         types = ["mapping", "naming", "parameter", "logic_hallucination"]
         for idx, (i, step) in enumerate(code_steps):

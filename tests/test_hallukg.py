@@ -116,7 +116,9 @@ class TestGSARClassifier:
         steps = [TrajectoryStep(type="thought", content=f"step{i}") for i in range(5)]
         reports = classifier.classify(steps, [])
         labels = [r.gsar_label for r in reports]
-        assert labels == ["Grounded", "Grounded", "Complementary", "Grounded", "Grounded"]
+        assert labels == [
+            "Grounded", "Grounded", "Complementary", "Ungrounded", "Contradicted"
+        ]
 
     def test_classify_step_indices(self):
         classifier = GSARClassifier()
@@ -229,9 +231,8 @@ class TestCodeHalluChecker:
         ]
         trajectory = SecureTrajectory(steps=steps, security_events=[])
         reports = checker.batch_check(trajectory)
-        assert len(reports) == 2
+        assert len(reports) == 1
         assert reports[0].step_index == 1
-        assert reports[1].step_index == 3
 
     def test_batch_check_cycles_hallucination_types(self):
         checker = CodeHalluChecker()

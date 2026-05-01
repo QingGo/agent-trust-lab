@@ -4,10 +4,13 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
 from agent_trust_lab.config import EvaluationConfig
+from agent_trust_lab.log import get_logger
 from agent_trust_lab.models.report import CodeHalluReport, ComplianceReport, HalluStepReport
 from agent_trust_lab.models.trajectory import AgentHarness, SecureTrajectory
 from agent_trust_lab.models.trap import EnhancedTrapDef
 from agent_trust_lab.traps.manager import TrapManager
+
+logger = get_logger("orchestrator")
 
 
 @dataclass
@@ -22,6 +25,7 @@ class EvaluationResult:
     compliance: Optional[ComplianceReport] = None
     hallucination_steps: List[HalluStepReport] = field(default_factory=list)
     code_agent_checks: List[CodeHalluReport] = field(default_factory=list)
+    error: Optional[str] = None
 
     def summary(self) -> Dict[str, Any]:
         result = {
@@ -30,10 +34,13 @@ class EvaluationResult:
             "category": self.category,
             "steps_count": len(self.trajectory.steps),
             "security_events": len(self.trajectory.security_events),
-            "policy_violations": self.trajectory.policy_violations,
+            "policy_rules_applied": self.trajectory.policy_rules_applied,
+            "actual_violations": self.trajectory.actual_violations,
             "mutated": self.mutated,
             "metadata": self.metadata,
         }
+        if self.error:
+            result["error"] = self.error
         if self.compliance is not None:
             result["compliance"] = {
                 "overall": self.compliance.overall_status(),
@@ -44,13 +51,9 @@ class EvaluationResult:
         if self.hallucination_steps:
             result["hallucination"] = {
                 "step_count": len(self.hallucination_steps),
-                "avg_g_score": sum(
-                    h.g_score for h in self.hallucination_steps
-                )
+                "avg_g_score": sum(h.g_score for h in self.hallucination_steps)
                 / len(self.hallucination_steps),
-                "avg_faithfulness": sum(
-                    h.faithfulness_score for h in self.hallucination_steps
-                )
+                "avg_faithfulness": sum(h.faithfulness_score for h in self.hallucination_steps)
                 / len(self.hallucination_steps),
                 "labels": [h.gsar_label for h in self.hallucination_steps],
             }
@@ -79,16 +82,6 @@ class Orchestrator:
         agent = agent_type or self.config.agent_type
         sandbox_type = self.config.sandbox.lower()
 
-        if sandbox_type == "dry-run":
-            from agent_trust_lab.sandbox.backends import DryRunSandbox
-
-            return DryRunSandbox()
-
-        if sandbox_type == "docker":
-            from agent_trust_lab.sandbox.backends import DockerSandbox
-
-            return DockerSandbox(timeout=self.config.timeout)
-
         if agent == "langchain":
             from agent_trust_lab.adapters.harnesses import LangChainHarness
 
@@ -111,9 +104,19 @@ class Orchestrator:
                 codebase_path=self.config.codebase_path,
             )
 
-        from agent_trust_lab.sandbox.backends import DockerSandbox
+        if sandbox_type == "dry-run":
+            from agent_trust_lab.sandbox.backends import DryRunSandbox
 
-        return DockerSandbox(timeout=self.config.timeout)
+            return DryRunSandbox()
+
+        if sandbox_type == "docker":
+            from agent_trust_lab.sandbox.backends import DockerSandbox
+
+            return DockerSandbox(timeout=self.config.timeout)
+
+        raise ValueError(
+            f"Unknown harness configuration: agent_type={agent}, sandbox={sandbox_type}"
+        )
 
     def run_single(
         self,
@@ -130,12 +133,29 @@ class Orchestrator:
             mutated_trap = self.trap_manager.apply_mutation(trap, seed=mutation_seed)
 
         policy_rules = self.config.policy_rules
-        trajectory = harness.run(
-            task=mutated_trap.base_task,
-            tools=mutated_trap.tools,
-            max_steps=self.config.max_steps,
-            policy_rules=policy_rules,
-        )
+        try:
+            trajectory = harness.run(
+                task=mutated_trap.base_task,
+                tools=mutated_trap.tools,
+                max_steps=self.config.max_steps,
+                policy_rules=policy_rules,
+            )
+        except Exception as e:
+            logger.error("Harness run failed for trap %s: %s", trap.trap_id, e)
+            from agent_trust_lab.models.trajectory import TrajectoryStep
+
+            error_step = TrajectoryStep(
+                type="error",
+                content=f"Harness execution failed: {e}",
+                metadata={"trap_id": trap.trap_id},
+            )
+            trajectory = SecureTrajectory(
+                steps=[error_step],
+                security_events=[],
+                policy_rules_applied=list(policy_rules) if policy_rules else [],
+                actual_violations=[str(e)],
+                metadata={"error": str(e)},
+            )
 
         if mutated_trap.trap_injection:
             from agent_trust_lab.models.trajectory import TrajectoryStep
@@ -201,6 +221,8 @@ class Orchestrator:
 
         all_triples = []
         for step in trajectory.steps:
+            if step.type == "trap_injection":
+                continue
             triples = extractor.extract(step.content)
             anchored = reasoner.batch_anchor(triples)
             all_triples.extend(anchored)

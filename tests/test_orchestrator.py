@@ -51,7 +51,11 @@ variation_rules: []
 
 @pytest.fixture
 def config(trap_data_dir):
-    return EvaluationConfig(trap_library_path=trap_data_dir, sandbox="docker")
+    return EvaluationConfig(
+        trap_library_path=trap_data_dir,
+        sandbox="docker",
+        agent_type="",
+    )
 
 
 class TestOrchestrator:
@@ -63,7 +67,9 @@ class TestOrchestrator:
         assert isinstance(harness, DockerSandbox)
 
     def test_resolve_harness_dry_run(self, trap_data_dir):
-        config = EvaluationConfig(trap_library_path=trap_data_dir, sandbox="dry-run")
+        config = EvaluationConfig(
+            trap_library_path=trap_data_dir, sandbox="dry-run", agent_type=""
+        )
         orch = Orchestrator(config)
         harness = orch.resolve_harness()
         from agent_trust_lab.sandbox.backends import DryRunSandbox
@@ -169,7 +175,7 @@ class TestOrchestrator:
         assert summary["trap_id"] == "orch_test_01"
         assert "steps_count" in summary
         assert "security_events" in summary
-        assert "policy_violations" in summary
+        assert "policy_rules_applied" in summary
         assert summary["mutated"] is False
 
     def test_trap_injection_appended_to_trajectory(self, config):

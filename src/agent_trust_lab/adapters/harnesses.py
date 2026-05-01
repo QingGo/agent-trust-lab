@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
+from agent_trust_lab.log import get_logger
 from agent_trust_lab.models.trajectory import (
     AgentHarness,
     SecureTrajectory,
@@ -11,9 +12,10 @@ from agent_trust_lab.models.trajectory import (
 )
 from agent_trust_lab.sandbox.filter import filter_command
 
+logger = get_logger("adapters.harnesses")
+
 
 def _build_tool_schemas(tools: List[Dict[str, Any]]) -> list[dict[str, Any]]:
-    """Convert harness tool dicts to OpenAI function-calling tool schemas."""
     schemas: list[dict[str, Any]] = []
     for t in tools:
         name = t.get("name", "unknown")
@@ -31,7 +33,6 @@ def _build_tool_schemas(tools: List[Dict[str, Any]]) -> list[dict[str, Any]]:
 
 
 def _format_tool_result(tool_name: str, arguments: str) -> str:
-    """Generate a simulated tool result for trajectory collection."""
     return f"[Tool:{tool_name}] Executed with arguments: {arguments}"
 
 
@@ -39,6 +40,7 @@ def _format_tool_result(tool_name: str, arguments: str) -> str:
 class LangChainHarness(AgentHarness):
     model: str = "deepseek-v4-flash"
     temperature: float = 0.0
+    timeout: int = 120
     api_key: str = ""
     base_url: str = ""
 
@@ -51,8 +53,9 @@ class LangChainHarness(AgentHarness):
     ) -> SecureTrajectory:
         try:
             return self._run_with_llm(task, tools, max_steps, policy_rules)
-        except Exception:
-            return self._run_stub(task, tools, max_steps, policy_rules)
+        except Exception as e:
+            logger.warning("LangChainHarness LLM call failed, falling back to stub: %s", e)
+            return self._run_stub(task, tools, max_steps, policy_rules, error=str(e))
 
     def _run_with_llm(
         self,
@@ -65,7 +68,8 @@ class LangChainHarness(AgentHarness):
 
         steps: List[TrajectoryStep] = []
         security_events: List[SecurityEvent] = []
-        policy_violations: List[str] = list(policy_rules) if policy_rules else []
+        policy_rules_applied: List[str] = list(policy_rules) if policy_rules else []
+        actual_violations: List[str] = []
 
         steps.append(
             TrajectoryStep(
@@ -85,7 +89,7 @@ class LangChainHarness(AgentHarness):
                 )
             )
 
-        resolved_key = get_api_key(self.api_key)
+        resolved_key = get_api_key(self.api_key) or ""
         resolved_url = get_base_url(self.base_url)
         client = create_openai_client(api_key=resolved_key, base_url=resolved_url)
         tool_schemas = _build_tool_schemas(tools)
@@ -110,6 +114,7 @@ class LangChainHarness(AgentHarness):
                 tools=api_tools,
                 temperature=self.temperature,
                 extra_body={"thinking": {"type": "disabled"}},
+                timeout=self.timeout,
             )
 
             choice = response.choices[0]
@@ -183,7 +188,8 @@ class LangChainHarness(AgentHarness):
             steps=steps,
             security_events=security_events,
             dry_run_log="",
-            policy_violations=policy_violations,
+            policy_rules_applied=policy_rules_applied,
+            actual_violations=actual_violations,
             metadata={
                 "adapter": "langchain",
                 "model": self.model,
@@ -202,7 +208,8 @@ class LangChainHarness(AgentHarness):
     ) -> SecureTrajectory:
         steps: List[TrajectoryStep] = []
         security_events: List[SecurityEvent] = []
-        policy_violations: List[str] = list(policy_rules) if policy_rules else []
+        policy_rules_applied: List[str] = list(policy_rules) if policy_rules else []
+        actual_violations: List[str] = []
 
         steps.append(
             TrajectoryStep(
@@ -259,7 +266,8 @@ class LangChainHarness(AgentHarness):
             steps=steps,
             security_events=security_events,
             dry_run_log="",
-            policy_violations=policy_violations,
+            policy_rules_applied=policy_rules_applied,
+            actual_violations=actual_violations,
             metadata={"adapter": "langchain", "model": self.model, "stub": True},
         )
 
@@ -278,7 +286,8 @@ class OpenAIFunctionHarness(AgentHarness):
     ) -> SecureTrajectory:
         steps: List[TrajectoryStep] = []
         security_events: List[SecurityEvent] = []
-        policy_violations: List[str] = list(policy_rules) if policy_rules else []
+        policy_rules_applied: List[str] = list(policy_rules) if policy_rules else []
+        actual_violations: List[str] = []
 
         steps.append(
             TrajectoryStep(
@@ -331,7 +340,8 @@ class OpenAIFunctionHarness(AgentHarness):
             steps=steps,
             security_events=security_events,
             dry_run_log="",
-            policy_violations=policy_violations,
+            policy_rules_applied=policy_rules_applied,
+            actual_violations=actual_violations,
             metadata={"adapter": "openai-functions", "model": self.model, "stub": True},
         )
 
@@ -351,7 +361,8 @@ class CodexHarness(AgentHarness):
     ) -> SecureTrajectory:
         steps: List[TrajectoryStep] = []
         security_events: List[SecurityEvent] = []
-        policy_violations: List[str] = list(policy_rules) if policy_rules else []
+        policy_rules_applied: List[str] = list(policy_rules) if policy_rules else []
+        actual_violations: List[str] = []
 
         steps.append(
             TrajectoryStep(
@@ -411,6 +422,7 @@ class CodexHarness(AgentHarness):
             steps=steps,
             security_events=security_events,
             dry_run_log="",
-            policy_violations=policy_violations,
+            policy_rules_applied=policy_rules_applied,
+            actual_violations=actual_violations,
             metadata={"adapter": "codex", "model": self.model, "stub": True},
         )

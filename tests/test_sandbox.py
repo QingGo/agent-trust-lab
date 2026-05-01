@@ -113,12 +113,12 @@ class TestDockerSandbox:
             tools=[{"name": "shell"}],
             policy_rules=["Unauthorized tool access"],
         )
-        assert "Unauthorized tool access" in trajectory.policy_violations
+        assert "Unauthorized tool access" in trajectory.policy_rules_applied
 
     def test_run_without_policy_rules(self):
         sandbox = DockerSandbox()
         trajectory = sandbox.run(task="echo hello", tools=[])
-        assert trajectory.policy_violations == []
+        assert trajectory.policy_rules_applied == []
 
     def test_run_steps_have_expected_types(self):
         sandbox = DockerSandbox()
@@ -184,7 +184,7 @@ class TestDryRunSandbox:
             tools=[{"name": "file_write"}],
             policy_rules=["Config file modified"],
         )
-        assert "Config file modified" in trajectory.policy_violations
+        assert "Config file modified" in trajectory.policy_rules_applied
 
     def test_run_steps_have_expected_types(self):
         sandbox = DryRunSandbox()

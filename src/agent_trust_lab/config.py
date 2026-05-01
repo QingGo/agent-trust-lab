@@ -21,3 +21,11 @@ class EvaluationConfig:
     test_suite_path: Optional[str] = None
     dry_run: bool = False
     timeout: int = 120
+
+    def __post_init__(self) -> None:
+        if self.max_steps < 1:
+            raise ValueError(f"max_steps must be >= 1, got {self.max_steps}")
+        if self.parallel < 1:
+            raise ValueError(f"parallel must be >= 1, got {self.parallel}")
+        if self.timeout < 1:
+            raise ValueError(f"timeout must be >= 1, got {self.timeout}")

@@ -23,7 +23,8 @@ class SecureTrajectory:
     steps: List[TrajectoryStep]
     security_events: List[SecurityEvent]
     dry_run_log: str = ""
-    policy_violations: List[str] = field(default_factory=list)
+    policy_rules_applied: List[str] = field(default_factory=list)
+    actual_violations: List[str] = field(default_factory=list)
     metadata: Dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> Dict[str, Any]:
@@ -46,7 +47,8 @@ class SecureTrajectory:
                 for e in self.security_events
             ],
             "dry_run_log": self.dry_run_log,
-            "policy_violations": self.policy_violations,
+            "policy_rules_applied": self.policy_rules_applied,
+            "actual_violations": self.actual_violations,
             "metadata": self.metadata,
         }
 

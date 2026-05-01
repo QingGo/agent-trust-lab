@@ -105,13 +105,13 @@ class TestTrajectoryModels:
                 SecurityEvent(event_type="cmd_filtered", description="Blocked", step_index=1),
             ],
             dry_run_log="All good.",
-            policy_violations=["Unauthorized tool access"],
+            policy_rules_applied=["Unauthorized tool access"],
         )
 
         d = traj.to_dict()
         assert len(d["steps"]) == 2
         assert len(d["security_events"]) == 1
-        assert d["policy_violations"] == ["Unauthorized tool access"]
+        assert d["policy_rules_applied"] == ["Unauthorized tool access"]
 
         json_str = traj.to_json()
         assert '"type": "thought"' in json_str

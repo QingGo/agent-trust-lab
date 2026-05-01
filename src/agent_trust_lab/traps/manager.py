@@ -1,9 +1,13 @@
 import os
 from typing import List, Optional
 
+import pydantic
 import yaml
 
+from agent_trust_lab.log import get_logger
 from agent_trust_lab.models.trap import EnhancedTrapDef
+
+logger = get_logger("traps.manager")
 
 
 class TrapManager:
@@ -17,6 +21,7 @@ class TrapManager:
     def _load_all(self) -> None:
         """Recursively load all YAML traps from the library path."""
         if not os.path.isdir(self.trap_library_path):
+            logger.warning("Trap library path does not exist: %s", self.trap_library_path)
             return
         for root, _dirs, files in os.walk(self.trap_library_path):
             for filename in files:
@@ -29,8 +34,10 @@ class TrapManager:
                             continue
                         trap = EnhancedTrapDef(**data)
                         self._traps[trap.trap_id] = trap
-                    except Exception as e:
-                        print(f"Warning: Failed to load trap from {filepath}: {e}")
+                    except (yaml.YAMLError, pydantic.ValidationError) as e:
+                        logger.warning("Failed to load trap from %s: %s", filepath, e)
+                    except Exception:
+                        logger.warning("Failed to load trap from %s:", filepath, exc_info=True)
 
     def load_traps(
         self,
@@ -39,14 +46,6 @@ class TrapManager:
         difficulty: Optional[str] = None,
         include_controls: bool = False,
     ) -> List[EnhancedTrapDef]:
-        """Load traps filtered by criteria.
-
-        Args:
-            trap_ids: Specific trap IDs to load. Overrides other filters if set.
-            category: Filter by category ('general_agent', 'code_agent', or None for all).
-            difficulty: Filter by difficulty ('trivial', 'easy', 'medium', 'hard').
-            include_controls: Include benign control and overly cautious samples.
-        """
         if trap_ids is not None:
             return [t for tid in trap_ids if (t := self._traps.get(tid)) is not None]
 
@@ -65,19 +64,15 @@ class TrapManager:
         return results
 
     def get_trap(self, trap_id: str) -> Optional[EnhancedTrapDef]:
-        """Get a single trap by ID."""
         return self._traps.get(trap_id)
 
     def list_categories(self) -> List[str]:
-        """Return all distinct categories in the trap library."""
         return sorted(set(t.category for t in self._traps.values()))
 
     def list_difficulties(self) -> List[str]:
-        """Return all distinct difficulty levels in the trap library."""
         return sorted(set(t.difficulty for t in self._traps.values()))
 
     def list_trap_types(self) -> List[str]:
-        """Return all distinct trap types."""
         return sorted(set(t.trap_type for t in self._traps.values()))
 
     @property
@@ -86,7 +81,6 @@ class TrapManager:
 
     @staticmethod
     def _load_single_file(filepath: str) -> Optional[EnhancedTrapDef]:
-        """Load a single trap from a YAML file path. Returns None on failure."""
         if not os.path.isfile(filepath):
             return None
         try:
@@ -95,8 +89,8 @@ class TrapManager:
             if data is None:
                 return None
             return EnhancedTrapDef(**data)
-        except Exception as e:
-            print(f"Warning: Failed to load trap from {filepath}: {e}")
+        except (yaml.YAMLError, pydantic.ValidationError) as e:
+            logger.warning("Failed to load trap from %s: %s", filepath, e)
             return None
 
     def apply_mutation(
@@ -104,7 +98,6 @@ class TrapManager:
         trap: EnhancedTrapDef,
         seed: Optional[int] = None,
     ) -> EnhancedTrapDef:
-        """Apply field-level mutation to a trap, returning a new instance."""
         from agent_trust_lab.traps.mutator import FieldMutator
 
         mutator = FieldMutator(seed=seed)

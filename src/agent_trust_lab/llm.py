@@ -1,15 +1,19 @@
 import os
+from typing import Optional
 
 from dotenv import load_dotenv
-from openai import OpenAI
+from openai import APIConnectionError, APIError, APITimeoutError, OpenAI
 from openai.types.chat import ChatCompletion
+
+from agent_trust_lab.log import get_logger
 
 load_dotenv()
 
 _DEFAULT_BASE_URL = "https://api.deepseek.com"
+logger = get_logger("llm")
 
 
-def get_api_key(api_key: str = "") -> str:
+def get_api_key(api_key: str = "") -> Optional[str]:
     """Resolve API key: explicit arg > DEEPSEEK_API_KEY env > OPENAI_API_KEY env."""
     if api_key:
         return api_key
@@ -19,7 +23,7 @@ def get_api_key(api_key: str = "") -> str:
     openai_key = os.environ.get("OPENAI_API_KEY", "")
     if openai_key:
         return openai_key
-    return ""
+    return None
 
 
 def get_base_url(base_url: str = "") -> str:
@@ -40,7 +44,7 @@ def create_openai_client(
     """Create an OpenAI-compatible client. All params are explicit for future multi-model use."""
     resolved_key = get_api_key(api_key)
     resolved_url = get_base_url(base_url)
-    return OpenAI(api_key=resolved_key, base_url=resolved_url)
+    return OpenAI(api_key=resolved_key or "", base_url=resolved_url)
 
 
 def create_langchain_llm(
@@ -49,18 +53,14 @@ def create_langchain_llm(
     base_url: str = "",
     temperature: float = 0.0,
 ):
-    """Create a LangChain ChatOpenAI instance configured for the provider.
-
-    Returns a ChatOpenAI that can be used with langchain agents/executors.
-    All params are explicit — no hidden coupling to EvaluationConfig.
-    """
+    """Create a LangChain ChatOpenAI instance configured for the provider."""
     from langchain_openai import ChatOpenAI
 
     resolved_key = get_api_key(api_key)
     resolved_url = get_base_url(base_url)
     return ChatOpenAI(
         model=model,
-        api_key=resolved_key,  # pyright: ignore[reportArgumentType]
+        api_key=resolved_key or "",  # pyright: ignore[reportArgumentType]
         base_url=resolved_url,
         temperature=temperature,
     )
@@ -84,5 +84,9 @@ def test_connection(
         )
         content = response.choices[0].message.content or ""
         return True, f"OK: {content[:100]}"
+    except (APIError, APIConnectionError, APITimeoutError) as e:
+        logger.warning("API connection test failed: %s", e)
+        return False, str(e)
     except Exception as e:
+        logger.error("Unexpected error during connection test: %s", e, exc_info=True)
         return False, str(e)
