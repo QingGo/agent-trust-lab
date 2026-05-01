@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
 from agent_trust_lab.config import EvaluationConfig
+from agent_trust_lab.models.report import CodeHalluReport, ComplianceReport, HalluStepReport
 from agent_trust_lab.models.trajectory import AgentHarness, SecureTrajectory
 from agent_trust_lab.models.trap import EnhancedTrapDef
 from agent_trust_lab.traps.manager import TrapManager
@@ -18,9 +19,12 @@ class EvaluationResult:
     mutated: bool = False
     mutation_seed: Optional[int] = None
     metadata: Dict[str, Any] = field(default_factory=dict)
+    compliance: Optional[ComplianceReport] = None
+    hallucination_steps: List[HalluStepReport] = field(default_factory=list)
+    code_agent_checks: List[CodeHalluReport] = field(default_factory=list)
 
     def summary(self) -> Dict[str, Any]:
-        return {
+        result = {
             "trap_id": self.trap_id,
             "trap_type": self.trap_type,
             "category": self.category,
@@ -30,6 +34,32 @@ class EvaluationResult:
             "mutated": self.mutated,
             "metadata": self.metadata,
         }
+        if self.compliance is not None:
+            result["compliance"] = {
+                "overall": self.compliance.overall_status(),
+                "dimensions": self.compliance.dimensions,
+                "critical_count": self.compliance.critical_count,
+                "high_count": self.compliance.high_count,
+            }
+        if self.hallucination_steps:
+            result["hallucination"] = {
+                "step_count": len(self.hallucination_steps),
+                "avg_g_score": sum(
+                    h.g_score for h in self.hallucination_steps
+                )
+                / len(self.hallucination_steps),
+                "avg_faithfulness": sum(
+                    h.faithfulness_score for h in self.hallucination_steps
+                )
+                / len(self.hallucination_steps),
+                "labels": [h.gsar_label for h in self.hallucination_steps],
+            }
+        if self.code_agent_checks:
+            result["code_hallu"] = {
+                "count": len(self.code_agent_checks),
+                "types": [c.hallucination_type for c in self.code_agent_checks],
+            }
+        return result
 
 
 class Orchestrator:
@@ -114,6 +144,17 @@ class Orchestrator:
                 )
             )
 
+        compliance = self._audit_compliance(
+            trajectory=trajectory,
+            is_code_agent=trap.category == "code_agent",
+            is_benign=trap.trap_type in ("benign_control", "benign_code_control"),
+        )
+
+        hallu_steps, code_hallus = self._run_hallukg(
+            trajectory=trajectory,
+            is_code_agent=trap.category == "code_agent",
+        )
+
         return EvaluationResult(
             trap_id=trap.trap_id,
             trap_type=trap.trap_type,
@@ -125,7 +166,51 @@ class Orchestrator:
                 "severity": trap.severity,
                 "difficulty": trap.difficulty,
             },
+            compliance=compliance,
+            hallucination_steps=hallu_steps,
+            code_agent_checks=code_hallus,
         )
+
+    def _audit_compliance(
+        self,
+        trajectory: SecureTrajectory,
+        is_code_agent: bool = False,
+        is_benign: bool = False,
+    ) -> ComplianceReport:
+        from agent_trust_lab.audit.auditor import PAEAuditor
+
+        auditor = PAEAuditor(is_code_agent=is_code_agent)
+        return auditor.audit(trajectory, is_benign_control=is_benign)
+
+    def _run_hallukg(
+        self,
+        trajectory: SecureTrajectory,
+        is_code_agent: bool = False,
+    ) -> tuple[List[HalluStepReport], List[CodeHalluReport]]:
+        from agent_trust_lab.hallukg.anchoring import AnchoringReasoner
+        from agent_trust_lab.hallukg.classifier import GSARClassifier
+        from agent_trust_lab.hallukg.extractor import TripleExtractor
+
+        extractor = TripleExtractor(model_name=self.config.model)
+        reasoner = AnchoringReasoner(knowledge_base_path=self.config.anchor_kb)
+        classifier = GSARClassifier()
+
+        all_triples = []
+        for step in trajectory.steps:
+            triples = extractor.extract(step.content)
+            anchored = reasoner.batch_anchor(triples)
+            all_triples.extend(anchored)
+
+        hallucination_steps = classifier.classify(trajectory.steps, all_triples)
+        code_hallus: List[CodeHalluReport] = []
+
+        if is_code_agent:
+            from agent_trust_lab.hallukg.code_checker import CodeHalluChecker
+
+            code_checker = CodeHalluChecker(timeout=self.config.timeout)
+            code_hallus = code_checker.batch_check(trajectory)
+
+        return hallucination_steps, code_hallus
 
     def run_traps(
         self,

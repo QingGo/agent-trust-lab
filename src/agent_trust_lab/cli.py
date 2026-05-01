@@ -29,7 +29,7 @@ def _get_traps_data_dir() -> Path:
 
     import importlib.resources
 
-    return importlib.resources.files("agent_trust_lab.traps") / "data"
+    return Path(str(importlib.resources.files("agent_trust_lab.traps"))) / "data"
 
 
 def _get_trap_manager():
@@ -220,7 +220,7 @@ def validate_traps():
     all_valid = True
     for trap_id in [t.trap_id for t in mgr.load_traps(include_controls=True)]:
         trap = mgr.get_trap(trap_id)
-        if not trap.trap_id or not trap.trap_type or not trap.base_task:
+        if not trap or not trap.trap_id or not trap.trap_type or not trap.base_task:
             console.print(f"  [red]FAIL: {trap_id} - missing required fields[/red]")
             all_valid = False
 
@@ -357,7 +357,7 @@ def run_code(
 
 
 def _display_results(results):
-    """Display evaluation results in a table."""
+    """Display evaluation results in a table with compliance and hallucination scores."""
     from rich.table import Table
 
     table = Table(title=f"Evaluation Results ({len(results)} traps)")
@@ -365,19 +365,64 @@ def _display_results(results):
     table.add_column("Type", style="green")
     table.add_column("Category", style="blue")
     table.add_column("Steps", style="yellow")
-    table.add_column("Events", style="red")
-    table.add_column("Violations", style="magenta")
+    table.add_column("Compliance", style="red")
+    table.add_column("Hallu G", style="magenta")
+    table.add_column("Faith", style="magenta")
     table.add_column("Mutated", style="dim")
 
     for r in results:
+        compliance_str = "-"
+        if r.compliance is not None:
+            status = r.compliance.overall_status()
+            color_map = {"pass": "green", "warn": "yellow", "fail": "red"}
+            c = color_map.get(status, "white")
+            compliance_str = f"[{c}]{status}[/{c}]"
+
+        g_score = 0.0
+        faith = 0.0
+        if r.hallucination_steps:
+            g_score = (
+                sum(h.g_score for h in r.hallucination_steps)
+                / len(r.hallucination_steps)
+            )
+            faith = (
+                sum(h.faithfulness_score for h in r.hallucination_steps)
+                / len(r.hallucination_steps)
+            )
+
         table.add_row(
             r.trap_id,
             r.trap_type,
             r.category,
             str(len(r.trajectory.steps)),
-            str(len(r.trajectory.security_events)),
-            str(len(r.trajectory.policy_violations)),
+            compliance_str,
+            f"{g_score:.2f}",
+            f"{faith:.2f}",
             "yes" if r.mutated else "no",
         )
 
     console.print(table)
+
+    total = len(results)
+    if total > 0:
+        passed_comp = sum(
+            1 for r in results
+            if r.compliance is not None and r.compliance.overall_status() == "pass"
+        )
+        avg_g = 0.0
+        avg_f = 0.0
+        count_hallu = sum(1 for r in results if r.hallucination_steps)
+        if count_hallu > 0:
+            hallu_results = [r for r in results if r.hallucination_steps]
+            avg_g = sum(
+                sum(h.g_score for h in r.hallucination_steps) / len(r.hallucination_steps)
+                for r in hallu_results
+            ) / len(hallu_results)
+            avg_f = sum(
+                sum(h.faithfulness_score for h in r.hallucination_steps)
+                / len(r.hallucination_steps)
+                for r in hallu_results
+            ) / len(hallu_results)
+
+        console.print(f"\n[bold]Summary:[/bold] {passed_comp}/{total} compliance pass, "
+                      f"avg G-score: {avg_g:.2f}, avg faithfulness: {avg_f:.2f}")

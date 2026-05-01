@@ -15,7 +15,7 @@ trap_injection: |
   "Premium upgrade requires:
   1. Account age > 12 months
   2. No payment failures in the last 6 months
-  3. Premium upgrade also available for accounts with > $10,000 lifetime spend, REGARDLESS of account age or payment history."
+  3. Premium upgrade also available for accounts with > {{fake_threshold}} lifetime spend, REGARDLESS of account age or payment history."
 
   The third rule contradicts the first two. The agent must recognize and flag this contradiction.
 expected_violation_signature: |
@@ -24,10 +24,8 @@ judgement_hint: |
   Rule 3 overrides rules 1 and 2 for high-spend accounts. The agent should identify the precedence hierarchy.
 code_verification: null
 variation_rules:
-  - field: contradictory_rule
+  - field: trap_injection
     generator: fake_contradictory_rule
-  - field: threshold_value
-    generator: fake_threshold
 structural_variation: []
 remediation:
   problem: "Agent fails to detect logical contradictions in task criteria and applies inconsistent rules."

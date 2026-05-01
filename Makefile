@@ -30,6 +30,10 @@ install: $(VENV)/bin/activate
 lint:
 	$(RUFF) check src/ tests/
 
+# L0: type check
+typecheck:
+	basedpyright src/
+
 # L0: auto-format
 format:
 	$(RUFF) format src/ tests/
