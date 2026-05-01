@@ -279,6 +279,15 @@ def run(
         None, "--base-url", help="LLM API base URL (default: https://api.deepseek.com)"
     ),
     sandbox: str = typer.Option("docker", "--sandbox", help="Sandbox backend (docker, dry-run)"),
+    sandbox_image: Optional[str] = typer.Option(
+        None, "--sandbox-image", help="Container image (default: busybox from DaoCloud mirror)"
+    ),
+    sandbox_network: bool = typer.Option(
+        False, "--sandbox-network", help="Enable network access in sandbox container"
+    ),
+    docker_host: Optional[str] = typer.Option(
+        None, "--docker-host", help="Docker/Podman socket (default: auto-detect)"
+    ),
     mutate: bool = typer.Option(
         False, "--mutate", help="Apply field variation to the trap before running"
     ),
@@ -308,6 +317,9 @@ def run(
             "model": model,
             "base_url": base_url or "",
             "sandbox": sandbox,
+            "sandbox_image": sandbox_image or "",
+            "sandbox_network": sandbox_network,
+            "docker_host": docker_host or "",
         },
         trap_file=trap_file,
         trap_id=trap_id,
@@ -339,6 +351,15 @@ def run_code(
     ),
     codebase: Optional[str] = typer.Option(None, "--codebase", help="Codebase path"),
     sandbox: str = typer.Option("docker", "--sandbox", help="Sandbox backend (docker, dry-run)"),
+    sandbox_image: Optional[str] = typer.Option(
+        None, "--sandbox-image", help="Container image (default: busybox from DaoCloud mirror)"
+    ),
+    sandbox_network: bool = typer.Option(
+        False, "--sandbox-network", help="Enable network access in sandbox container"
+    ),
+    docker_host: Optional[str] = typer.Option(
+        None, "--docker-host", help="Docker/Podman socket (default: auto-detect)"
+    ),
     mutate: bool = typer.Option(
         False, "--mutate", help="Apply field variation to the trap before running"
     ),
@@ -363,6 +384,9 @@ def run_code(
             "model": model,
             "base_url": base_url or "",
             "sandbox": sandbox,
+            "sandbox_image": sandbox_image or "",
+            "sandbox_network": sandbox_network,
+            "docker_host": docker_host or "",
             "codebase_path": codebase,
         },
         trap_file=trap_file,

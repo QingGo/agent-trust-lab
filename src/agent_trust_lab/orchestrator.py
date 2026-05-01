@@ -112,7 +112,13 @@ class Orchestrator:
         if sandbox_type == "docker":
             from agent_trust_lab.sandbox.backends import DockerSandbox
 
-            return DockerSandbox(timeout=self.config.timeout)
+            return DockerSandbox(
+                image=self.config.sandbox_image,
+                timeout=self.config.timeout,
+                network_enabled=self.config.sandbox_network,
+                tmpfs_size=self.config.sandbox_tmpfs_size,
+                docker_host=self.config.docker_host,
+            )
 
         raise ValueError(
             f"Unknown harness configuration: agent_type={agent}, sandbox={sandbox_type}"

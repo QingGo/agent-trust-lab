@@ -20,3 +20,4 @@ wheels/
 docs/
 !docs/implementation_notes.md
 .agent_memory.md
+.handoff.md

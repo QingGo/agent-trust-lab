@@ -9,6 +9,10 @@ class EvaluationConfig:
     api_key: str = ""
     base_url: str = ""
     sandbox: str = "docker"
+    sandbox_image: str = "docker.m.daocloud.io/library/busybox:latest"
+    sandbox_network: bool = False
+    sandbox_tmpfs_size: str = "64m"
+    docker_host: str = ""
     anchor_kb: str = "./kb/"
     trap_library_path: str = "./traps/"
     output_dir: str = "./results/"

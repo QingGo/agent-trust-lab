@@ -83,14 +83,26 @@ class TestCommandFilter:
 class TestDockerSandbox:
     def test_default_construction(self):
         sandbox = DockerSandbox()
-        assert sandbox.image == "agent-trust-lab/sandbox:latest"
+        assert sandbox.image == "docker.m.daocloud.io/library/busybox:latest"
         assert sandbox.timeout == 120
+        assert sandbox.network_enabled is False
+        assert sandbox.tmpfs_size == "64m"
 
     def test_custom_construction(self):
-        sandbox = DockerSandbox(image="custom:latest", timeout=60, read_only_mount="/code")
+        sandbox = DockerSandbox(
+            image="custom:latest",
+            timeout=60,
+            read_only_mount="/code",
+            network_enabled=True,
+            tmpfs_size="128m",
+            docker_host="unix:///custom.sock",
+        )
         assert sandbox.image == "custom:latest"
         assert sandbox.timeout == 60
         assert sandbox.read_only_mount == "/code"
+        assert sandbox.network_enabled is True
+        assert sandbox.tmpfs_size == "128m"
+        assert sandbox.docker_host == "unix:///custom.sock"
 
     def test_run_returns_secure_trajectory(self):
         sandbox = DockerSandbox()
