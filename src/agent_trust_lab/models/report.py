@@ -39,6 +39,7 @@ class HalluStepReport:
     faithfulness_score: float = 1.0
     evidence: List[str] = field(default_factory=list)
     explanation: str = ""
+    anchor_type: str = "none"  # semantic/token_overlap/multi_hop/none
 
 
 @dataclass

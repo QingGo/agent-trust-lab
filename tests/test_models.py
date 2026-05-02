@@ -173,6 +173,18 @@ class TestTrajectoryModels:
 
 
 class TestReportModels:
+    def test_hallu_step_report_anchor_type_default(self):
+        from agent_trust_lab.models.report import HalluStepReport
+
+        step = HalluStepReport(step_index=0, gsar_label="Grounded")
+        assert step.anchor_type == "none"
+
+    def test_hallu_step_report_anchor_type_custom(self):
+        from agent_trust_lab.models.report import HalluStepReport
+
+        step = HalluStepReport(step_index=0, gsar_label="Grounded", anchor_type="semantic")
+        assert step.anchor_type == "semantic"
+
     def test_compliance_report_pass(self):
         report = ComplianceReport(
             dimensions={"tool_auth": "pass", "source_verification": "pass"},
@@ -270,3 +282,31 @@ class TestEvaluationConfig:
     def test_nli_neutral_weight_above_one_raises(self):
         with pytest.raises(ValueError, match="nli_neutral_weight"):
             EvaluationConfig(nli_neutral_weight=1.5)
+
+    def test_anchor_type_weights_default(self):
+        config = EvaluationConfig()
+        assert config.anchor_type_weights == {
+            "semantic": 0.7,
+            "token_overlap": 0.6,
+            "multi_hop": 0.6,
+            "none": 0.5,
+        }
+
+    def test_anchor_type_weights_custom(self):
+        config = EvaluationConfig(
+            anchor_type_weights={
+                "semantic": 0.8,
+                "token_overlap": 0.4,
+                "multi_hop": 0.5,
+                "none": 0.3,
+            }
+        )
+        assert config.anchor_type_weights["semantic"] == 0.8
+
+    def test_anchor_type_weights_below_zero_raises(self):
+        with pytest.raises(ValueError, match="anchor_type_weights"):
+            EvaluationConfig(anchor_type_weights={"none": -0.1})
+
+    def test_anchor_type_weights_above_one_raises(self):
+        with pytest.raises(ValueError, match="anchor_type_weights"):
+            EvaluationConfig(anchor_type_weights={"semantic": 1.5})

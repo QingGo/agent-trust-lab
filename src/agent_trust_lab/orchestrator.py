@@ -80,6 +80,7 @@ class EvaluationResult:
             "u_score": h.u_score,
             "c_score": h.c_score,
             "faithfulness_score": h.faithfulness_score,
+            "anchor_type": h.anchor_type,
         }
         if h.step_index < len(trajectory.steps):
             traj_step = trajectory.steps[h.step_index]
@@ -245,12 +246,14 @@ class Orchestrator:
 
         skip_types = set(self.config.skip_extract_types)
         all_triples = []
-        for step in trajectory.steps:
+        step_anchor_types: dict[int, str] = {}
+        for i, step in enumerate(trajectory.steps):
             if step.type == "trap_injection" or step.type in skip_types:
                 continue
             triples = extractor.extract(step.content)
             anchored = reasoner.batch_anchor(triples, knowledge_text=knowledge_source)
             all_triples.extend(anchored)
+            step_anchor_types[i] = self._step_anchor_type(anchored)
 
         if knowledge_source:
             try:
@@ -261,6 +264,9 @@ class Orchestrator:
                     all_triples, knowledge_text=knowledge_source
                 )
                 all_triples = self._merge_anchor_results(all_triples, multi_anchored)
+                merged_anchor_type = self._step_anchor_type(all_triples)
+                for idx in step_anchor_types:
+                    step_anchor_types[idx] = merged_anchor_type
             except Exception:
                 logger.debug("Multi-hop reasoning skipped (graph construction failed)")
 
@@ -278,6 +284,9 @@ class Orchestrator:
                     "Multi-model classification failed, using single-model result: %s", e
                 )
 
+        for step in hallucination_steps:
+            step.anchor_type = step_anchor_types.get(step.step_index, "none")
+
         self._apply_faithfulness_check(hallucination_steps, trajectory)
         code_hallus: List[CodeHalluReport] = []
 
@@ -290,6 +299,30 @@ class Orchestrator:
             code_hallus = code_checker.batch_check(trajectory)
 
         return hallucination_steps, code_hallus
+
+    @staticmethod
+    def _determine_anchor_type(triple: dict) -> str:
+        """Determine anchor type from a single triple's evidence."""
+        if triple.get("multi_hop"):
+            return "multi_hop"
+        evidence = triple.get("evidence", [])
+        evidence_str = " ".join(str(e) for e in evidence)
+        if "Semantic match" in evidence_str or "semantic" in evidence_str.lower():
+            return "semantic"
+        if "Token match" in evidence_str or "token" in evidence_str.lower():
+            return "token_overlap"
+        return "none"
+
+    @staticmethod
+    def _step_anchor_type(step_triples: list[dict]) -> str:
+        """Determine dominant anchor type for a step from its triples."""
+        if not step_triples:
+            return "none"
+        types = [Orchestrator._determine_anchor_type(t) for t in step_triples]
+        for preferred in ("semantic", "multi_hop", "token_overlap"):
+            if preferred in types:
+                return preferred
+        return "none"
 
     @staticmethod
     def _merge_anchor_results(
@@ -324,6 +357,7 @@ class Orchestrator:
     ) -> None:
         from agent_trust_lab.hallukg.faithfulness import FaithfulnessChecker
 
+        weights = self.config.anchor_type_weights
         checker = FaithfulnessChecker(nli_neutral_weight=self.config.nli_neutral_weight)
         for step in hallucination_steps:
             if step.step_index >= len(trajectory.steps):
@@ -334,12 +368,15 @@ class Orchestrator:
             evidence = step.evidence if step.evidence else ["no evidence"]
             gsar_score = step.faithfulness_score
             nli_score = checker.check([traj_step.content], evidence)
-            step.faithfulness_score = round((gsar_score + nli_score) / 2.0, 4)
+            alpha = weights.get(step.anchor_type, 0.5)
+            step.faithfulness_score = round(alpha * gsar_score + (1.0 - alpha) * nli_score, 4)
             logger.debug(
-                "Faithfulness cross-check step %d: gsar=%.3f nli=%.3f blended=%.3f",
+                "Faithfulness cross-check step %d: gsar=%.3f nli=%.3f alpha=%.3f (%s) blended=%.3f",
                 step.step_index,
                 gsar_score,
                 nli_score,
+                alpha,
+                step.anchor_type,
                 step.faithfulness_score,
             )
 

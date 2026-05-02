@@ -493,6 +493,217 @@ remediation:
         assert summary["metadata"]["base_task"] == "Check DB"
 
 
+class TestAnchorTypeDetection:
+    def test_determine_anchor_type_semantic(self):
+        from agent_trust_lab.orchestrator import Orchestrator
+
+        triple = {"evidence": ["Semantic match (0.850) with: 'database_query accepts limit'"]}
+        assert Orchestrator._determine_anchor_type(triple) == "semantic"
+
+    def test_determine_anchor_type_token_overlap(self):
+        from agent_trust_lab.orchestrator import Orchestrator
+
+        triple = {"evidence": ["Token match for 'database_query' in knowledge source"]}
+        assert Orchestrator._determine_anchor_type(triple) == "token_overlap"
+
+    def test_determine_anchor_type_multi_hop(self):
+        from agent_trust_lab.orchestrator import Orchestrator
+
+        triple = {"multi_hop": True}
+        assert Orchestrator._determine_anchor_type(triple) == "multi_hop"
+
+    def test_determine_anchor_type_none(self):
+        from agent_trust_lab.orchestrator import Orchestrator
+
+        triple = {"evidence": ["No match found"]}
+        assert Orchestrator._determine_anchor_type(triple) == "none"
+
+    def test_step_anchor_type_prefers_semantic(self):
+        from agent_trust_lab.orchestrator import Orchestrator
+
+        triples = [
+            {"evidence": ["Token match for 'x'"]},
+            {"evidence": ["Semantic match (0.8)"]},
+            {"evidence": ["Token match for 'y'"]},
+        ]
+        assert Orchestrator._step_anchor_type(triples) == "semantic"
+
+    def test_step_anchor_type_prefers_multi_hop_over_token(self):
+        from agent_trust_lab.orchestrator import Orchestrator
+
+        triples = [
+            {"evidence": ["Token match for 'x'"]},
+            {"multi_hop": True},
+        ]
+        assert Orchestrator._step_anchor_type(triples) == "multi_hop"
+
+    def test_step_anchor_type_empty(self):
+        from agent_trust_lab.orchestrator import Orchestrator
+
+        assert Orchestrator._step_anchor_type([]) == "none"
+
+    def test_step_anchor_type_all_none(self):
+        from agent_trust_lab.orchestrator import Orchestrator
+
+        triples = [
+            {"evidence": ["No match"]},
+            {"evidence": ["No match 2"]},
+        ]
+        assert Orchestrator._step_anchor_type(triples) == "none"
+
+
+class TestAdaptiveFaithfulnessFusion:
+    def test_apply_faithfulness_uses_anchor_type_weight(self, config):
+        from unittest.mock import MagicMock
+
+        from agent_trust_lab.models.report import HalluStepReport
+        from agent_trust_lab.orchestrator import Orchestrator
+
+        orch = Orchestrator(config)
+
+        step = HalluStepReport(
+            step_index=0,
+            gsar_label="Grounded",
+            faithfulness_score=0.8,
+            anchor_type="semantic",
+        )
+
+        mock_trajectory = MagicMock()
+        mock_trajectory.steps = [MagicMock(type="thought", content="test content")]
+
+        with patch(
+            "agent_trust_lab.hallukg.faithfulness.FaithfulnessChecker.check",
+            return_value=0.4,
+        ):
+            orch._apply_faithfulness_check([step], mock_trajectory)
+
+        expected = round(0.7 * 0.8 + 0.3 * 0.4, 4)
+        assert step.faithfulness_score == expected
+
+    def test_apply_faithfulness_uses_none_weight(self, config):
+        from unittest.mock import MagicMock
+
+        from agent_trust_lab.models.report import HalluStepReport
+        from agent_trust_lab.orchestrator import Orchestrator
+
+        orch = Orchestrator(config)
+
+        step = HalluStepReport(
+            step_index=0,
+            gsar_label="Ungrounded",
+            faithfulness_score=0.3,
+            anchor_type="none",
+        )
+
+        mock_trajectory = MagicMock()
+        mock_trajectory.steps = [MagicMock(type="thought", content="test")]
+
+        with patch(
+            "agent_trust_lab.hallukg.faithfulness.FaithfulnessChecker.check",
+            return_value=0.6,
+        ):
+            orch._apply_faithfulness_check([step], mock_trajectory)
+
+        expected = round(0.5 * 0.3 + 0.5 * 0.6, 4)
+        assert step.faithfulness_score == expected
+
+    def test_apply_faithfulness_skips_trap_injection(self, config):
+        from unittest.mock import MagicMock
+
+        from agent_trust_lab.models.report import HalluStepReport
+        from agent_trust_lab.orchestrator import Orchestrator
+
+        orch = Orchestrator(config)
+
+        step = HalluStepReport(
+            step_index=0,
+            gsar_label="Grounded",
+            faithfulness_score=0.9,
+            anchor_type="semantic",
+        )
+
+        mock_trajectory = MagicMock()
+        mock_trajectory.steps = [MagicMock(type="trap_injection", content="injection")]
+
+        with patch(
+            "agent_trust_lab.hallukg.faithfulness.FaithfulnessChecker.check",
+        ) as mock_check:
+            orch._apply_faithfulness_check([step], mock_trajectory)
+            mock_check.assert_not_called()
+
+    def test_apply_faithfulness_skips_action_and_error(self, config):
+        from unittest.mock import MagicMock
+
+        from agent_trust_lab.models.report import HalluStepReport
+        from agent_trust_lab.orchestrator import Orchestrator
+
+        orch = Orchestrator(config)
+
+        step_act = HalluStepReport(step_index=0, gsar_label="Grounded", anchor_type="semantic")
+        step_err = HalluStepReport(step_index=1, gsar_label="Grounded", anchor_type="semantic")
+
+        mock_trajectory = MagicMock()
+        mock_trajectory.steps = [
+            MagicMock(type="action", content="action"),
+            MagicMock(type="error", content="error"),
+        ]
+
+        with patch(
+            "agent_trust_lab.hallukg.faithfulness.FaithfulnessChecker.check",
+        ) as mock_check:
+            orch._apply_faithfulness_check([step_act, step_err], mock_trajectory)
+            mock_check.assert_not_called()
+
+    def test_apply_faithfulness_uses_token_overlap_weight(self, config):
+        from unittest.mock import MagicMock
+
+        from agent_trust_lab.models.report import HalluStepReport
+        from agent_trust_lab.orchestrator import Orchestrator
+
+        config_custom = EvaluationConfig(
+            trap_library_path=config.trap_library_path,
+            sandbox="docker",
+            agent_type="",
+            anchor_type_weights={
+                "semantic": 0.9,
+                "token_overlap": 0.4,
+                "multi_hop": 0.7,
+                "none": 0.3,
+            },
+        )
+        orch = Orchestrator(config_custom)
+
+        step = HalluStepReport(
+            step_index=0,
+            gsar_label="Grounded",
+            faithfulness_score=0.5,
+            anchor_type="token_overlap",
+        )
+
+        mock_trajectory = MagicMock()
+        mock_trajectory.steps = [MagicMock(type="thought", content="test")]
+
+        with patch(
+            "agent_trust_lab.hallukg.faithfulness.FaithfulnessChecker.check",
+            return_value=0.9,
+        ):
+            orch._apply_faithfulness_check([step], mock_trajectory)
+
+        expected = round(0.4 * 0.5 + 0.6 * 0.9, 4)
+        assert step.faithfulness_score == expected
+
+    def test_run_single_includes_anchor_type_in_summary(self, config):
+        orch = Orchestrator(config)
+        trap = orch.trap_manager.get_trap("orch_test_01")
+        result = orch.run_single(trap)
+        summary = result.summary()
+
+        assert "hallucination" in summary
+        for step in summary["hallucination"]["steps"]:
+            assert "anchor_type" in step
+            assert step["anchor_type"] in ("semantic", "token_overlap", "multi_hop", "none")
+
+
 class TestTrapManagerLoadSingleFile:
     def test_load_valid_file(self, trap_data_dir):
         from agent_trust_lab.traps.manager import TrapManager

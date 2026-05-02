@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 
 @dataclass
@@ -31,6 +31,14 @@ class EvaluationConfig:
     skip_extract_types: List[str] = field(default_factory=lambda: ["action", "error"])
     grounded_threshold: float = 0.3
     nli_neutral_weight: float = 0.5
+    anchor_type_weights: Dict[str, float] = field(
+        default_factory=lambda: {
+            "semantic": 0.7,
+            "token_overlap": 0.6,
+            "multi_hop": 0.6,
+            "none": 0.5,
+        }
+    )
 
     def __post_init__(self) -> None:
         if self.max_steps < 1:
@@ -47,3 +55,8 @@ class EvaluationConfig:
             raise ValueError(
                 f"nli_neutral_weight must be in [0.0, 1.0], got {self.nli_neutral_weight}"
             )
+        for atype, weight in self.anchor_type_weights.items():
+            if not 0.0 <= weight <= 1.0:
+                raise ValueError(
+                    f"anchor_type_weights[{atype}] must be in [0.0, 1.0], got {weight}"
+                )
