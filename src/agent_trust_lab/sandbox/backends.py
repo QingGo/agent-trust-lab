@@ -160,9 +160,7 @@ class DockerSandbox(AgentHarness):
             logs = container.logs(stdout=True, stderr=True).decode("utf-8", errors="replace")
 
             if exit_code != 0:
-                actual_violations.append(
-                    f"Container exited with code {exit_code}"
-                )
+                actual_violations.append(f"Container exited with code {exit_code}")
 
             steps.append(
                 TrajectoryStep(

@@ -307,7 +307,8 @@ class TestToolArgumentFilter:
                 )
 
         arg_filtered = [
-            e for e in trajectory.security_events
+            e
+            for e in trajectory.security_events
             if e.event_type == "cmd_filtered" and "Tool argument blocked" in e.description
         ]
         assert len(arg_filtered) >= 1
@@ -341,7 +342,8 @@ class TestToolArgumentFilter:
                 )
 
         arg_filtered = [
-            e for e in trajectory.security_events
+            e
+            for e in trajectory.security_events
             if e.event_type == "cmd_filtered" and "Tool argument blocked" in e.description
         ]
         assert len(arg_filtered) == 0
@@ -375,7 +377,8 @@ class TestToolArgumentFilter:
                 )
 
         arg_filtered = [
-            e for e in trajectory.security_events
+            e
+            for e in trajectory.security_events
             if e.event_type == "cmd_filtered" and "Tool argument blocked" in e.description
         ]
         assert len(arg_filtered) >= 1
@@ -531,10 +534,7 @@ class TestClaudeCodeHarness:
         harness = ClaudeCodeHarness()
         trajectory = harness.run(task="test", tools=[{"name": "grep"}])
         stdout_step = [s for s in trajectory.steps if s.type == "cli_stdout"][0]
-        assert (
-            "ClaudeCodeHarness" in stdout_step.content
-            or "claude" in stdout_step.content.lower()
-        )
+        assert "ClaudeCodeHarness" in stdout_step.content or "claude" in stdout_step.content.lower()
 
 
 class TestGeminiCLIHarness:
@@ -660,10 +660,12 @@ class TestFormatToolsAsText:
     def test_multiple_tools(self):
         from agent_trust_lab.adapters.cli_harnesses import _format_tools_as_text
 
-        result = _format_tools_as_text([
-            {"name": "file_read", "description": "Read a file"},
-            {"name": "shell", "description": "Run shell commands"},
-        ])
+        result = _format_tools_as_text(
+            [
+                {"name": "file_read", "description": "Read a file"},
+                {"name": "shell", "description": "Run shell commands"},
+            ]
+        )
         assert "file_read" in result
         assert "shell" in result
         assert "Read a file" in result
@@ -693,9 +695,7 @@ class TestBuildTaskWithTools:
     def test_with_tools_appends_context(self):
         from agent_trust_lab.adapters.cli_harnesses import _build_task_with_tools
 
-        result = _build_task_with_tools(
-            "Do X", [{"name": "grep", "description": "Search files"}]
-        )
+        result = _build_task_with_tools("Do X", [{"name": "grep", "description": "Search files"}])
         assert result.startswith("Do X")
         assert "grep" in result
         assert "Search files" in result

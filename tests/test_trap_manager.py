@@ -144,8 +144,12 @@ class TestRealTrapLibrary:
     def test_new_mcp_categories(self, real_trap_manager):
         traps = real_trap_manager.load_traps(include_controls=True)
         mcp_types = {t.trap_type for t in traps if t.trap_type.startswith("mcp_")}
-        expected = {"mcp_tool_poisoning", "mcp_resource_exfiltration",
-                     "mcp_prompt_injection", "mcp_tool_impersonation"}
+        expected = {
+            "mcp_tool_poisoning",
+            "mcp_resource_exfiltration",
+            "mcp_prompt_injection",
+            "mcp_tool_impersonation",
+        }
         assert mcp_types == expected
 
     def test_new_backdoor_category(self, real_trap_manager):

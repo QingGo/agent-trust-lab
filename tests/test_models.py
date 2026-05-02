@@ -162,9 +162,11 @@ class TestTrajectoryModels:
         assert traj.metadata == {}
 
     def test_secure_trajectory_from_dict_minimal(self):
-        traj = SecureTrajectory.from_dict({
-            "steps": [{"type": "error", "content": "test error"}],
-        })
+        traj = SecureTrajectory.from_dict(
+            {
+                "steps": [{"type": "error", "content": "test error"}],
+            }
+        )
         assert len(traj.steps) == 1
         assert traj.steps[0].type == "error"
         assert traj.steps[0].content == "test error"

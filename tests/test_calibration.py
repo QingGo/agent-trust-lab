@@ -192,9 +192,7 @@ class TestCalibrationProfile:
 class TestProfileStorage:
     def test_save_and_load_profile(self, tmp_path):
         calibration_dir = str(tmp_path / "calibration")
-        with patch(
-            "agent_trust_lab.calibration.profile.DEFAULT_CALIBRATION_DIR", calibration_dir
-        ):
+        with patch("agent_trust_lab.calibration.profile.DEFAULT_CALIBRATION_DIR", calibration_dir):
             profile = CalibrationProfile(
                 profile_id="save-test",
                 benchmark="test-bench",
@@ -219,24 +217,16 @@ class TestProfileStorage:
 
     def test_list_profiles(self, tmp_path):
         calibration_dir = str(tmp_path / "calibration")
-        with patch(
-            "agent_trust_lab.calibration.profile.DEFAULT_CALIBRATION_DIR", calibration_dir
-        ):
+        with patch("agent_trust_lab.calibration.profile.DEFAULT_CALIBRATION_DIR", calibration_dir):
             assert list_profiles() == []
-            save_profile(
-                CalibrationProfile(profile_id="p1", benchmark="b1", version="v1")
-            )
-            save_profile(
-                CalibrationProfile(profile_id="p2", benchmark="b2", version="v2")
-            )
+            save_profile(CalibrationProfile(profile_id="p1", benchmark="b1", version="v1"))
+            save_profile(CalibrationProfile(profile_id="p2", benchmark="b2", version="v2"))
             profiles = list_profiles()
             assert sorted(profiles) == ["p1", "p2"]
 
     def test_list_profiles_empty_dir(self, tmp_path):
         calibration_dir = str(tmp_path / "nonexistent")
-        with patch(
-            "agent_trust_lab.calibration.profile.DEFAULT_CALIBRATION_DIR", calibration_dir
-        ):
+        with patch("agent_trust_lab.calibration.profile.DEFAULT_CALIBRATION_DIR", calibration_dir):
             assert list_profiles() == []
 
 
@@ -250,10 +240,22 @@ class TestApplyCalibrationToResults:
                     "hallucination": {
                         "step_count": 2,
                         "steps": [
-                            {"step_index": 0, "gsar_label": "Grounded", "g_score": 0.8,
-                             "u_score": 0.1, "c_score": 0.05, "faithfulness_score": 0.9},
-                            {"step_index": 1, "gsar_label": "Ungrounded", "g_score": 0.2,
-                             "u_score": 0.7, "c_score": 0.3, "faithfulness_score": 0.4},
+                            {
+                                "step_index": 0,
+                                "gsar_label": "Grounded",
+                                "g_score": 0.8,
+                                "u_score": 0.1,
+                                "c_score": 0.05,
+                                "faithfulness_score": 0.9,
+                            },
+                            {
+                                "step_index": 1,
+                                "gsar_label": "Ungrounded",
+                                "g_score": 0.2,
+                                "u_score": 0.7,
+                                "c_score": 0.3,
+                                "faithfulness_score": 0.4,
+                            },
                         ],
                     },
                 }
@@ -280,7 +282,9 @@ class TestApplyCalibrationToResults:
             "results": [{"trap_id": "t1"}],
         }
         profile = CalibrationProfile(
-            profile_id="test", benchmark="b", version="v",
+            profile_id="test",
+            benchmark="b",
+            version="v",
             platt_params={"g_score": {"A": -1.0, "B": 0.0}},
         )
         result = _apply_calibration_to_results(data, profile)
@@ -300,12 +304,22 @@ class TestRunCalibration:
                     "trap_id": "t1",
                     "hallucination": {
                         "steps": [
-                            {"step_index": 0, "gsar_label": "Grounded",
-                             "g_score": 0.8, "u_score": 0.1, "c_score": 0.05,
-                             "faithfulness_score": 0.9},
-                            {"step_index": 1, "gsar_label": "Ungrounded",
-                             "g_score": 0.2, "u_score": 0.7, "c_score": 0.3,
-                             "faithfulness_score": 0.4},
+                            {
+                                "step_index": 0,
+                                "gsar_label": "Grounded",
+                                "g_score": 0.8,
+                                "u_score": 0.1,
+                                "c_score": 0.05,
+                                "faithfulness_score": 0.9,
+                            },
+                            {
+                                "step_index": 1,
+                                "gsar_label": "Ungrounded",
+                                "g_score": 0.2,
+                                "u_score": 0.7,
+                                "c_score": 0.3,
+                                "faithfulness_score": 0.4,
+                            },
                         ],
                     },
                 }
@@ -315,10 +329,24 @@ class TestRunCalibration:
             "benchmark": "test-bench",
             "version": "1.0",
             "annotations": [
-                {"trap_id": "t1", "step_index": 0, "gsar_label": "Grounded",
-                 "g_score": 0.9, "faithfulness_score": 0.95, "u_score": 0.1, "c_score": 0.1},
-                {"trap_id": "t1", "step_index": 1, "gsar_label": "Ungrounded",
-                 "g_score": 0.1, "faithfulness_score": 0.3, "u_score": 0.8, "c_score": 0.4},
+                {
+                    "trap_id": "t1",
+                    "step_index": 0,
+                    "gsar_label": "Grounded",
+                    "g_score": 0.9,
+                    "faithfulness_score": 0.95,
+                    "u_score": 0.1,
+                    "c_score": 0.1,
+                },
+                {
+                    "trap_id": "t1",
+                    "step_index": 1,
+                    "gsar_label": "Ungrounded",
+                    "g_score": 0.1,
+                    "faithfulness_score": 0.3,
+                    "u_score": 0.8,
+                    "c_score": 0.4,
+                },
             ],
         }
 
@@ -327,17 +355,13 @@ class TestRunCalibration:
         with open(annotations_path, "w") as f:
             json.dump(annotations_data, f)
 
-        with patch(
-            "agent_trust_lab.calibration.profile.DEFAULT_CALIBRATION_DIR", calibration_dir
-        ):
+        with patch("agent_trust_lab.calibration.profile.DEFAULT_CALIBRATION_DIR", calibration_dir):
             profile = run_calibration(results_path, annotations_path, profile_id="e2e-test")
             assert profile.profile_id == "e2e-test"
             assert profile.sample_count == 2
             assert profile.benchmark == "test-bench"
             assert profile.kappa_gsar is not None
-            assert os.path.isfile(
-                os.path.join(calibration_dir, "e2e-test.json")
-            )
+            assert os.path.isfile(os.path.join(calibration_dir, "e2e-test.json"))
 
     def test_run_calibration_no_matches(self, tmp_path):
         results_path = str(tmp_path / "no_match_results.json")
@@ -347,9 +371,10 @@ class TestRunCalibration:
         results_data = {
             "config": {"model": "test"},
             "results": [
-                {"trap_id": "t1", "hallucination": {"steps": [
-                    {"step_index": 0, "gsar_label": "Grounded"}
-                ]}},
+                {
+                    "trap_id": "t1",
+                    "hallucination": {"steps": [{"step_index": 0, "gsar_label": "Grounded"}]},
+                },
             ],
         }
         annotations_data = {
@@ -362,9 +387,7 @@ class TestRunCalibration:
         with open(annotations_path, "w") as f:
             json.dump(annotations_data, f)
 
-        with patch(
-            "agent_trust_lab.calibration.profile.DEFAULT_CALIBRATION_DIR", calibration_dir
-        ):
+        with patch("agent_trust_lab.calibration.profile.DEFAULT_CALIBRATION_DIR", calibration_dir):
             with pytest.raises(ValueError, match="No matching"):
                 run_calibration(results_path, annotations_path)
 
@@ -387,9 +410,7 @@ class TestRunCalibration:
         with open(annotations_path, "w") as f:
             json.dump(annotations_data, f)
 
-        with patch(
-            "agent_trust_lab.calibration.profile.DEFAULT_CALIBRATION_DIR", calibration_dir
-        ):
+        with patch("agent_trust_lab.calibration.profile.DEFAULT_CALIBRATION_DIR", calibration_dir):
             with pytest.raises(ValueError, match="No matching"):
                 run_calibration(results_path, annotations_path)
 
@@ -414,16 +435,26 @@ class TestReportWithCalibration:
                         "avg_faithfulness": 0.6,
                         "labels": ["Grounded", "Ungrounded"],
                         "steps": [
-                            {"step_index": 0, "gsar_label": "Grounded",
-                             "g_score": 0.8, "u_score": 0.1, "c_score": 0.05,
-                             "faithfulness_score": 0.9,
-                             "calibrated_g_score": 0.85,
-                             "calibrated_faithfulness_score": 0.92},
-                            {"step_index": 1, "gsar_label": "Ungrounded",
-                             "g_score": 0.2, "u_score": 0.7, "c_score": 0.3,
-                             "faithfulness_score": 0.3,
-                             "calibrated_g_score": 0.15,
-                             "calibrated_faithfulness_score": 0.25},
+                            {
+                                "step_index": 0,
+                                "gsar_label": "Grounded",
+                                "g_score": 0.8,
+                                "u_score": 0.1,
+                                "c_score": 0.05,
+                                "faithfulness_score": 0.9,
+                                "calibrated_g_score": 0.85,
+                                "calibrated_faithfulness_score": 0.92,
+                            },
+                            {
+                                "step_index": 1,
+                                "gsar_label": "Ungrounded",
+                                "g_score": 0.2,
+                                "u_score": 0.7,
+                                "c_score": 0.3,
+                                "faithfulness_score": 0.3,
+                                "calibrated_g_score": 0.15,
+                                "calibrated_faithfulness_score": 0.25,
+                            },
                         ],
                     },
                 }
@@ -448,9 +479,14 @@ class TestReportWithCalibration:
                     "hallucination": {
                         "step_count": 1,
                         "steps": [
-                            {"step_index": 0, "gsar_label": "Grounded",
-                             "g_score": 0.7, "u_score": 0.1, "c_score": 0.05,
-                             "faithfulness_score": 0.8},
+                            {
+                                "step_index": 0,
+                                "gsar_label": "Grounded",
+                                "g_score": 0.7,
+                                "u_score": 0.1,
+                                "c_score": 0.05,
+                                "faithfulness_score": 0.8,
+                            },
                         ],
                     },
                 }
@@ -468,9 +504,7 @@ class TestCLICalibrate:
         from agent_trust_lab.cli import app
 
         runner = CliRunner()
-        with patch(
-            "agent_trust_lab.calibration.profile.list_profiles", return_value=[]
-        ):
+        with patch("agent_trust_lab.calibration.profile.list_profiles", return_value=[]):
             result = runner.invoke(app, ["calibrate", "dummy.json", "--list"])
             assert result.exit_code == 0
             assert "No calibration profiles found" in result.stdout
@@ -488,12 +522,15 @@ class TestCLICalibrate:
             sample_count=42,
             kappa_gsar=0.75,
         )
-        with patch(
-            "agent_trust_lab.calibration.profile.list_profiles",
-            return_value=["cli-test"],
-        ), patch(
-            "agent_trust_lab.calibration.profile.load_profile",
-            return_value=profile,
+        with (
+            patch(
+                "agent_trust_lab.calibration.profile.list_profiles",
+                return_value=["cli-test"],
+            ),
+            patch(
+                "agent_trust_lab.calibration.profile.load_profile",
+                return_value=profile,
+            ),
         ):
             result = runner.invoke(app, ["calibrate", "dummy.json", "--list"])
             assert result.exit_code == 0
@@ -526,9 +563,12 @@ class TestCLICalibrate:
         result = runner.invoke(
             app,
             [
-                "calibrate", results_path,
-                "--output", output_path,
-                "--profile-id", "nonexistent",
+                "calibrate",
+                results_path,
+                "--output",
+                output_path,
+                "--profile-id",
+                "nonexistent",
             ],
         )
         assert result.exit_code == 1

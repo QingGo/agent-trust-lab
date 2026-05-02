@@ -577,8 +577,10 @@ def calibrate(
         console.print(f"\n[bold green]Calibration profile '{profile_id}' created.[/bold green]")
         console.print(f"  Benchmark: {profile.benchmark} v{profile.version}")
         console.print(f"  Sample count: {profile.sample_count}")
-        console.print(f"  Cohen's κ (GSAR): {profile.kappa_gsar:.4f} "
-                      f"(95% CI: {profile.kappa_gsar_ci[0]:.4f}–{profile.kappa_gsar_ci[1]:.4f})")
+        console.print(
+            f"  Cohen's κ (GSAR): {profile.kappa_gsar:.4f} "
+            f"(95% CI: {profile.kappa_gsar_ci[0]:.4f}–{profile.kappa_gsar_ci[1]:.4f})"
+        )
         has_params = list(profile.platt_params.keys())
         if has_params:
             console.print(f"  Platt scaling fitted for: {', '.join(has_params)}")
@@ -686,12 +688,12 @@ def report(
             )
 
     if format_lower in ("markdown", "md"):
-        generator.generate_markdown(data, output_path=output_path,
-                                    calibration=cal_profile_data, lang=lang)
+        generator.generate_markdown(
+            data, output_path=output_path, calibration=cal_profile_data, lang=lang
+        )
         console.print(f"[green]Markdown report saved to {output_path}[/green]")
     else:
-        generator.generate(data, output_path=output_path,
-                           calibration=cal_profile_data, lang=lang)
+        generator.generate(data, output_path=output_path, calibration=cal_profile_data, lang=lang)
         console.print(f"[green]HTML report saved to {output_path}[/green]")
 
     if open_browser and format_lower == "html":
@@ -760,17 +762,20 @@ def batch(
 
     ev_labels = ", ".join(s.label for s in batch_config.evaluations)
     console.print(f"[bold]Batch evaluation:[/bold] {ev_labels}")
-    console.print(f"  {len(batch_config.evaluations)} config(s), "
-                  f"output dir: {batch_config.output_dir}")
+    console.print(
+        f"  {len(batch_config.evaluations)} config(s), output dir: {batch_config.output_dir}"
+    )
     console.print(f"  Report: {batch_config.report_format} ({batch_config.report_lang})")
 
     merged = run_batch(batch_config)
 
     n_traps = len(merged.get("results", []))
     n_models = len(merged.get("configs", []))
-    console.print(f"\n[green]Batch complete.[/green] "
-                  f"{n_traps} traps x {n_models} models."
-                  f"\n  Output: {batch_config.output_dir}")
+    console.print(
+        f"\n[green]Batch complete.[/green] "
+        f"{n_traps} traps x {n_models} models."
+        f"\n  Output: {batch_config.output_dir}"
+    )
 
 
 @app.command()
@@ -786,12 +791,8 @@ def replay(
         None, "--category", help="Category: general_agent or code_agent"
     ),
     model: str = typer.Option("deepseek-v4-flash", "--model", help="LLM model for re-evaluation"),
-    base_url: Optional[str] = typer.Option(
-        None, "--base-url", help="LLM API base URL"
-    ),
-    thinking: bool = typer.Option(
-        False, "--thinking", help="Enable DeepSeek thinking mode"
-    ),
+    base_url: Optional[str] = typer.Option(None, "--base-url", help="LLM API base URL"),
+    thinking: bool = typer.Option(False, "--thinking", help="Enable DeepSeek thinking mode"),
     effort: str = typer.Option(
         "", "--effort", help="Reasoning effort: high or max (requires --thinking)"
     ),
@@ -836,8 +837,10 @@ def replay(
         raise typer.Exit(code=1)
 
     trajectory = SecureTrajectory.from_dict(data)
-    console.print(f"[dim]Loaded trajectory: {len(trajectory.steps)} steps, "
-                  f"{len(trajectory.security_events)} security events[/dim]")
+    console.print(
+        f"[dim]Loaded trajectory: {len(trajectory.steps)} steps, "
+        f"{len(trajectory.security_events)} security events[/dim]"
+    )
 
     metadata = data.get("metadata", {})
     resolved_trap_id = trap_id or metadata.get("trap_id", "replayed")
@@ -879,31 +882,42 @@ def replay(
 @app.command()
 def setup_onnx(
     model: str = typer.Option(
-        "all", "--model", "-m",
+        "all",
+        "--model",
+        "-m",
         help="Model to export: nli (roberta-base-mnli), embed (all-MiniLM-L6-v2), or all",
     ),
     output_dir: Optional[str] = typer.Option(
-        None, "--output-dir", "-o",
+        None,
+        "--output-dir",
+        "-o",
         help="Output directory (default: ~/.cache/agent-trust-lab/onnx/)",
     ),
     hf_mirror: Optional[str] = typer.Option(
-        None, "--hf-mirror",
+        None,
+        "--hf-mirror",
         help="HuggingFace mirror endpoint (e.g., https://hf-mirror.com)",
     ),
     hf_token: Optional[str] = typer.Option(
-        None, "--hf-token",
+        None,
+        "--hf-token",
         help="HuggingFace API token",
     ),
     status: bool = typer.Option(
-        False, "--status",
+        False,
+        "--status",
         help="Check model availability without exporting",
     ),
     verbose: int = typer.Option(
-        0, "--verbose", "-v", count=True,
+        0,
+        "--verbose",
+        "-v",
+        count=True,
         help="Increase verbosity",
     ),
     log_file: Optional[str] = typer.Option(
-        None, "--log-file",
+        None,
+        "--log-file",
         help="Write logs to file",
     ),
 ) -> None:

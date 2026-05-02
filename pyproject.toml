@@ -59,6 +59,12 @@ select = ["E", "F", "I", "N", "W"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = [
+    "integration: tests requiring a real API key (auto-skipped when DEEPSEEK_API_KEY is missing)",
+    "docker: tests requiring Docker daemon (auto-skipped when Docker is unavailable)",
+    "slow: tests requiring ONNX models (auto-skipped when models are not cached)",
+    "e2e: full stack end-to-end tests (requires API key + Docker + ONNX)",
+]
 
 [tool.basedpyright]
 include = ["src"]

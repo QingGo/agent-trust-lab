@@ -70,9 +70,7 @@ class TestTripleExtractor:
         from agent_trust_lab.hallukg.extractor import TripleEntry, TripleList
 
         mock_response = TripleList(
-            triples=[
-                TripleEntry(subject="agent", predicate="ran", object="test", confidence=0.9)
-            ]
+            triples=[TripleEntry(subject="agent", predicate="ran", object="test", confidence=0.9)]
         )
 
         with patch("agent_trust_lab.llm.get_api_key", return_value="mock-key"):
@@ -90,8 +88,9 @@ class TestTripleExtractor:
     def test_extract_fallback_to_stub_on_error(self):
         """Verify fallback to stub when LLM call raises exception."""
         with patch("agent_trust_lab.llm.get_api_key", return_value="mock-key"):
-            with patch("agent_trust_lab.llm.create_openai_client",
-                       side_effect=Exception("API error")):
+            with patch(
+                "agent_trust_lab.llm.create_openai_client", side_effect=Exception("API error")
+            ):
                 extractor = TripleExtractor()
                 result = extractor.extract("test")
                 assert len(result) == 1
@@ -197,8 +196,12 @@ class TestAnchoringReasoner:
     def test_batch_anchor_ungrounded_when_no_match(self):
         reasoner = AnchoringReasoner()
         triples = [
-            {"subject": "unknown_tool", "predicate": "does", "object": "nothing",
-             "confidence": 0.5},
+            {
+                "subject": "unknown_tool",
+                "predicate": "does",
+                "object": "nothing",
+                "confidence": 0.5,
+            },
         ]
         knowledge = "email_send accepts: to, subject, body."
         results = reasoner.batch_anchor(triples, knowledge_text=knowledge)
@@ -217,8 +220,12 @@ class TestAnchoringReasoner:
     def test_batch_anchor_object_match(self):
         reasoner = AnchoringReasoner()
         triples = [
-            {"subject": "unknown_sig", "predicate": "has", "object": "email_send",
-             "confidence": 0.7},
+            {
+                "subject": "unknown_sig",
+                "predicate": "has",
+                "object": "email_send",
+                "confidence": 0.7,
+            },
         ]
         knowledge = "email_send accepts: to, subject, body."
         results = reasoner.batch_anchor(triples, knowledge_text=knowledge)
@@ -261,8 +268,12 @@ class TestAnchoringReasoner:
     def test_custom_grounded_threshold_low_value_grounds(self):
         reasoner = AnchoringReasoner(grounded_threshold=0.1)
         triples = [
-            {"subject": "unknown_tool", "predicate": "does", "object": "nothing",
-             "confidence": 0.5},
+            {
+                "subject": "unknown_tool",
+                "predicate": "does",
+                "object": "nothing",
+                "confidence": 0.5,
+            },
         ]
         knowledge = "email_send accepts: to, subject, body."
         results = reasoner.batch_anchor(triples, knowledge_text=knowledge)
@@ -282,12 +293,15 @@ class TestAnchoringReasonerSemantic:
 
     def _setup_embeddings(self, mock_instance, embeddings: dict):
         """Configure mock encode() to return specific embedding vectors."""
+
         def encode_side_effect(text):
             import numpy as np
+
             for key, vec in embeddings.items():
                 if key in text:
                     return np.array(vec, dtype=np.float64)
             return np.array([0.0] * 4, dtype=np.float64)
+
         mock_instance.encode.side_effect = encode_side_effect
 
     def test_semantic_anchor_matching(self, _mock_embedding_engine):
@@ -402,9 +416,7 @@ class TestGSARClassifier:
         steps = [TrajectoryStep(type="thought", content=f"step{i}") for i in range(5)]
         reports = classifier.classify(steps, [])
         labels = [r.gsar_label for r in reports]
-        assert labels == [
-            "Grounded", "Grounded", "Complementary", "Ungrounded", "Contradicted"
-        ]
+        assert labels == ["Grounded", "Grounded", "Complementary", "Ungrounded", "Contradicted"]
 
     def test_classify_step_indices(self):
         classifier = GSARClassifier()
@@ -489,8 +501,9 @@ class TestGSARClassifier:
     def test_classify_fallback_to_stub_on_error(self):
         """Verify fallback to stub when LLM call raises exception."""
         with patch("agent_trust_lab.llm.get_api_key", return_value="mock-key"):
-            with patch("agent_trust_lab.llm.create_openai_client",
-                       side_effect=Exception("API down")):
+            with patch(
+                "agent_trust_lab.llm.create_openai_client", side_effect=Exception("API down")
+            ):
                 classifier = GSARClassifier()
                 steps = [TrajectoryStep(type="thought", content="s")]
                 result = classifier.classify(steps, [])
@@ -598,8 +611,10 @@ class TestFaithfulnessChecker:
 class TestCodeHalluChecker:
     @pytest.fixture(autouse=True)
     def _stub_mode(self):
-        with patch("agent_trust_lab.sandbox.image.get_docker_client",
-                   side_effect=Exception("No Docker daemon")):
+        with patch(
+            "agent_trust_lab.sandbox.image.get_docker_client",
+            side_effect=Exception("No Docker daemon"),
+        ):
             yield
 
     def test_default_construction(self):
@@ -757,8 +772,7 @@ class TestCodeHalluChecker:
         mock_client = MagicMock()
         mock_client.containers.run.return_value = mock_container
 
-        with patch("agent_trust_lab.sandbox.image.get_docker_client",
-                   return_value=mock_client):
+        with patch("agent_trust_lab.sandbox.image.get_docker_client", return_value=mock_client):
             with patch("agent_trust_lab.sandbox.image.ImageManager") as mock_img_mgr:
                 mock_img_mgr.return_value.ensure_image.return_value = True
                 checker = CodeHalluChecker()
@@ -778,8 +792,7 @@ class TestCodeHalluChecker:
         mock_client = MagicMock()
         mock_client.containers.run.return_value = mock_container
 
-        with patch("agent_trust_lab.sandbox.image.get_docker_client",
-                   return_value=mock_client):
+        with patch("agent_trust_lab.sandbox.image.get_docker_client", return_value=mock_client):
             with patch("agent_trust_lab.sandbox.image.ImageManager") as mock_img_mgr:
                 mock_img_mgr.return_value.ensure_image.return_value = True
                 checker = CodeHalluChecker()
@@ -799,11 +812,369 @@ class TestCodeHalluChecker:
         mock_client = MagicMock()
         mock_client.containers.run.return_value = mock_container
 
-        with patch("agent_trust_lab.sandbox.image.get_docker_client",
-                   return_value=mock_client):
+        with patch("agent_trust_lab.sandbox.image.get_docker_client", return_value=mock_client):
             with patch("agent_trust_lab.sandbox.image.ImageManager") as mock_img_mgr:
                 mock_img_mgr.return_value.ensure_image.return_value = True
                 checker = CodeHalluChecker()
                 report = checker.check("[].notexist()")
                 assert report.hallucination_type == "naming"
                 assert "AttributeError" in (report.error_message or "")
+
+
+class TestKnowledgeGraph:
+    def test_default_construction(self):
+        from agent_trust_lab.hallukg.multi_hop import KnowledgeGraph
+
+        kg = KnowledgeGraph()
+        assert kg.edges == 0
+        assert kg.size() == 0
+
+    def test_add_single_triple(self):
+        from agent_trust_lab.hallukg.multi_hop import KnowledgeGraph
+
+        kg = KnowledgeGraph()
+        kg.add_triple({"subject": "a", "predicate": "p", "object": "b"})
+        assert kg.entity_exists("a")
+        assert kg.entity_exists("b")
+        assert kg.edges == 1
+
+    def test_add_multiple_triples(self):
+        from agent_trust_lab.hallukg.multi_hop import KnowledgeGraph
+
+        kg = KnowledgeGraph()
+        kg.add_triples(
+            [
+                {"subject": "a", "predicate": "p", "object": "b"},
+                {"subject": "b", "predicate": "q", "object": "c"},
+            ]
+        )
+        assert kg.size() >= 3
+        assert kg.edges == 2
+
+    def test_add_triple_empty_fields_skipped(self):
+        from agent_trust_lab.hallukg.multi_hop import KnowledgeGraph
+
+        kg = KnowledgeGraph()
+        kg.add_triple({"subject": "", "predicate": "p", "object": "b"})
+        assert kg.edges == 0
+        kg.add_triple({"subject": "a", "predicate": "p", "object": ""})
+        assert kg.edges == 0
+
+    def test_find_direct_path(self):
+        from agent_trust_lab.hallukg.multi_hop import KnowledgeGraph
+
+        kg = KnowledgeGraph()
+        kg.add_triple({"subject": "a", "predicate": "p", "object": "b"})
+        path = kg.find_shortest_path("a", "b")
+        assert path is not None
+        assert len(path) == 2
+
+    def test_find_multi_hop_path(self):
+        from agent_trust_lab.hallukg.multi_hop import KnowledgeGraph
+
+        kg = KnowledgeGraph()
+        kg.add_triples(
+            [
+                {"subject": "a", "predicate": "p", "object": "b"},
+                {"subject": "b", "predicate": "q", "object": "c"},
+                {"subject": "c", "predicate": "r", "object": "d"},
+            ]
+        )
+        path = kg.find_shortest_path("a", "d")
+        assert path is not None
+        assert len(path) == 4
+
+    def test_no_path_returns_none(self):
+        from agent_trust_lab.hallukg.multi_hop import KnowledgeGraph
+
+        kg = KnowledgeGraph()
+        kg.add_triple({"subject": "a", "predicate": "p", "object": "b"})
+        path = kg.find_shortest_path("a", "x")
+        assert path is None
+
+    def test_path_exceeds_max_hops(self):
+        from agent_trust_lab.hallukg.multi_hop import KnowledgeGraph
+
+        kg = KnowledgeGraph()
+        kg.add_triples(
+            [
+                {"subject": "a", "predicate": "p", "object": "b"},
+                {"subject": "b", "predicate": "q", "object": "c"},
+                {"subject": "c", "predicate": "r", "object": "d"},
+            ]
+        )
+        path = kg.find_shortest_path("a", "d", max_hops=1)
+        assert path is None
+
+    def test_self_path(self):
+        from agent_trust_lab.hallukg.multi_hop import KnowledgeGraph
+
+        kg = KnowledgeGraph()
+        kg.add_triple({"subject": "a", "predicate": "p", "object": "b"})
+        path = kg.find_shortest_path("a", "a")
+        assert path is not None
+        assert len(path) == 1
+
+    def test_get_edge_data(self):
+        from agent_trust_lab.hallukg.multi_hop import KnowledgeGraph
+
+        kg = KnowledgeGraph()
+        kg.add_triple({"subject": "a", "predicate": "p", "object": "b", "confidence": 0.9})
+        edge = kg.get_edge_data("a", "b")
+        assert edge is not None
+        assert edge["predicate"] == "p"
+        assert edge["confidence"] == 0.9
+
+    def test_get_edge_data_missing(self):
+        from agent_trust_lab.hallukg.multi_hop import KnowledgeGraph
+
+        kg = KnowledgeGraph()
+        edge = kg.get_edge_data("x", "y")
+        assert edge is None
+
+    def test_neighbors(self):
+        from agent_trust_lab.hallukg.multi_hop import KnowledgeGraph
+
+        kg = KnowledgeGraph()
+        kg.add_triple({"subject": "a", "predicate": "p", "object": "b"})
+        kg.add_triple({"subject": "a", "predicate": "q", "object": "c"})
+        neighbors = kg.neighbors("a")
+        assert len(neighbors) == 2
+        assert "b" in neighbors
+        assert "c" in neighbors
+
+    def test_neighbors_unknown_entity(self):
+        from agent_trust_lab.hallukg.multi_hop import KnowledgeGraph
+
+        kg = KnowledgeGraph()
+        neighbors = kg.neighbors("nonexistent")
+        assert neighbors == []
+
+    def test_entity_exists_case_insensitive(self):
+        from agent_trust_lab.hallukg.multi_hop import KnowledgeGraph
+
+        kg = KnowledgeGraph()
+        kg.add_triple({"subject": "EmailSend", "predicate": "p", "object": "MailHandler"})
+        assert kg.entity_exists("emailsend")
+        assert kg.entity_exists("EmAiLsEnD")
+
+    def test_add_knowledge_text(self):
+        from agent_trust_lab.hallukg.multi_hop import KnowledgeGraph
+
+        kg = KnowledgeGraph()
+        kg.add_knowledge_text("email_send tool handles mailing with cc.")
+        assert kg.size() > 0
+        assert kg.edges > 0
+
+    def test_add_knowledge_text_empty(self):
+        from agent_trust_lab.hallukg.multi_hop import KnowledgeGraph
+
+        kg = KnowledgeGraph()
+        kg.add_knowledge_text("")
+        assert kg.size() == 0
+
+
+class TestMultiHopReasoner:
+    def test_default_construction(self):
+        from agent_trust_lab.hallukg.multi_hop import MultiHopReasoner
+
+        mh = MultiHopReasoner()
+        assert mh.grounded_threshold == 0.3
+        assert mh.max_hops == 3
+
+    def test_custom_construction(self):
+        from agent_trust_lab.hallukg.multi_hop import MultiHopReasoner
+
+        mh = MultiHopReasoner(grounded_threshold=0.5, max_hops=2)
+        assert mh.grounded_threshold == 0.5
+        assert mh.max_hops == 2
+
+    def test_anchor_direct_hit(self):
+        from agent_trust_lab.hallukg.multi_hop import KnowledgeGraph, MultiHopReasoner
+
+        kg = KnowledgeGraph()
+        kg.add_triple({"subject": "email_send", "predicate": "accepts", "object": "cc"})
+        mh = MultiHopReasoner(knowledge_graph=kg)
+
+        result = mh.anchor(
+            {"subject": "email_send", "predicate": "accepts", "object": "cc"},
+        )
+        assert result["label"] == "Grounded"
+        assert result["anchor_score"] == 0.95
+        assert result["multi_hop"] is True
+        assert result["hop_count"] == 1
+
+    def test_anchor_multi_hop_path(self):
+        from agent_trust_lab.hallukg.multi_hop import KnowledgeGraph, MultiHopReasoner
+
+        kg = KnowledgeGraph()
+        kg.add_triples(
+            [
+                {"subject": "email_send", "predicate": "calls", "object": "smtp_client"},
+                {"subject": "smtp_client", "predicate": "uses", "object": "cc_header"},
+            ]
+        )
+        mh = MultiHopReasoner(knowledge_graph=kg)
+
+        result = mh.anchor(
+            {"subject": "email_send", "predicate": "affects", "object": "cc_header"},
+        )
+        assert result["multi_hop"] is True
+        assert result["hop_count"] >= 1
+
+    def test_anchor_no_path(self):
+        from agent_trust_lab.hallukg.multi_hop import KnowledgeGraph, MultiHopReasoner
+
+        kg = KnowledgeGraph()
+        kg.add_triple({"subject": "x", "predicate": "p", "object": "y"})
+        mh = MultiHopReasoner(knowledge_graph=kg)
+
+        result = mh.anchor(
+            {"subject": "a", "predicate": "p", "object": "b"},
+        )
+        assert result["label"] == "Ungrounded"
+        assert result["anchor_score"] == 0.0
+        assert result["hop_count"] == 0
+
+    def test_anchor_partial_knowledge_match(self):
+        from agent_trust_lab.hallukg.multi_hop import MultiHopReasoner
+
+        mh = MultiHopReasoner()
+        result = mh.anchor(
+            {"subject": "email_send", "predicate": "accepts", "object": "cc"},
+            knowledge_text="email_send tool handles mailing.",
+        )
+        assert result["multi_hop"] is True
+        assert "email_send" in str(result["evidence"])
+
+    def test_anchor_both_match_knowledge(self):
+        from agent_trust_lab.hallukg.multi_hop import MultiHopReasoner
+
+        mh = MultiHopReasoner()
+        result = mh.anchor(
+            {"subject": "email_send", "predicate": "accepts", "object": "cc"},
+            knowledge_text="email_send tool handles mailing with cc.",
+        )
+        assert result["anchor_score"] >= 0.4
+
+    def test_batch_anchor_returns_list(self):
+        from agent_trust_lab.hallukg.multi_hop import MultiHopReasoner
+
+        mh = MultiHopReasoner()
+        triples = [
+            {"subject": "email_send", "predicate": "accepts", "object": "cc"},
+            {"subject": "db", "predicate": "supports", "object": "sql"},
+        ]
+        results = mh.batch_anchor(
+            triples,
+            knowledge_text="email_send tool handles mailing with cc.",
+        )
+        assert len(results) == 2
+        for r in results:
+            assert "label" in r
+            assert "anchor_score" in r
+            assert "evidence" in r
+
+    def test_batch_anchor_empty(self):
+        from agent_trust_lab.hallukg.multi_hop import MultiHopReasoner
+
+        mh = MultiHopReasoner()
+        results = mh.batch_anchor([])
+        assert results == []
+
+    def test_batch_anchor_builds_graph(self):
+        from agent_trust_lab.hallukg.multi_hop import MultiHopReasoner
+
+        mh = MultiHopReasoner()
+        triples = [
+            {"subject": "a", "predicate": "p", "object": "b"},
+            {"subject": "b", "predicate": "q", "object": "c"},
+        ]
+        results = mh.batch_anchor(triples)
+        assert len(results) == 2
+        assert mh.knowledge_graph.edges >= 2
+
+    def test_anchor_with_custom_knowledge_graph(self):
+        from agent_trust_lab.hallukg.multi_hop import KnowledgeGraph, MultiHopReasoner
+
+        kg = KnowledgeGraph()
+        kg.add_triples(
+            [
+                {"subject": "func_a", "predicate": "returns", "object": "result_x"},
+                {"subject": "result_x", "predicate": "used_by", "object": "func_b"},
+            ]
+        )
+        mh = MultiHopReasoner(knowledge_graph=kg, max_hops=3)
+        result = mh.anchor(
+            {"subject": "func_a", "predicate": "impacts", "object": "func_b"},
+        )
+        assert result["multi_hop"] is True
+        assert result["hop_count"] >= 2
+        assert result["anchor_score"] > 0.0
+
+    def test_merge_anchor_results_prefers_higher_score(self):
+        from agent_trust_lab.orchestrator import Orchestrator
+
+        single = [
+            {
+                "subject": "a",
+                "predicate": "p",
+                "object": "b",
+                "label": "Ungrounded",
+                "anchor_score": 0.15,
+                "evidence": ["s1"],
+            },
+        ]
+        multi = [
+            {
+                "subject": "a",
+                "predicate": "p",
+                "object": "b",
+                "label": "Grounded",
+                "anchor_score": 0.95,
+                "evidence": ["m1"],
+                "multi_hop": True,
+                "hop_count": 2,
+            },
+        ]
+        merged = Orchestrator._merge_anchor_results(single, multi)
+        assert len(merged) == 1
+        assert merged[0]["anchor_score"] == 0.95
+        assert merged[0]["label"] == "Grounded"
+
+    def test_merge_anchor_results_keeps_single_when_higher(self):
+        from agent_trust_lab.orchestrator import Orchestrator
+
+        single = [
+            {
+                "subject": "a",
+                "predicate": "p",
+                "object": "b",
+                "label": "Grounded",
+                "anchor_score": 0.92,
+                "evidence": ["s1"],
+            },
+        ]
+        multi = [
+            {
+                "subject": "a",
+                "predicate": "p",
+                "object": "b",
+                "label": "Ungrounded",
+                "anchor_score": 0.1,
+                "evidence": ["m1"],
+                "multi_hop": True,
+                "hop_count": 0,
+            },
+        ]
+        merged = Orchestrator._merge_anchor_results(single, multi)
+        assert len(merged) == 1
+        assert merged[0]["anchor_score"] == 0.92
+
+    def test_merge_anchor_results_length_mismatch(self):
+        from agent_trust_lab.orchestrator import Orchestrator
+
+        single = [{"anchor_score": 0.5}]
+        multi = [{"anchor_score": 0.5}, {"anchor_score": 0.5}]
+        merged = Orchestrator._merge_anchor_results(single, multi)
+        assert merged is single

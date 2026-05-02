@@ -3,11 +3,14 @@ from agent_trust_lab.hallukg.classifier import GSARClassifier
 from agent_trust_lab.hallukg.code_checker import CodeHalluChecker
 from agent_trust_lab.hallukg.extractor import TripleExtractor
 from agent_trust_lab.hallukg.faithfulness import FaithfulnessChecker
+from agent_trust_lab.hallukg.multi_hop import KnowledgeGraph, MultiHopReasoner
 
 __all__ = [
-    "TripleExtractor",
     "AnchoringReasoner",
-    "GSARClassifier",
-    "FaithfulnessChecker",
     "CodeHalluChecker",
+    "FaithfulnessChecker",
+    "GSARClassifier",
+    "KnowledgeGraph",
+    "MultiHopReasoner",
+    "TripleExtractor",
 ]

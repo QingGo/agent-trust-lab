@@ -74,9 +74,7 @@ class TestOrchestrator:
         assert isinstance(harness, DockerSandbox)
 
     def test_resolve_harness_dry_run(self, trap_data_dir):
-        config = EvaluationConfig(
-            trap_library_path=trap_data_dir, sandbox="dry-run", agent_type=""
-        )
+        config = EvaluationConfig(trap_library_path=trap_data_dir, sandbox="dry-run", agent_type="")
         orch = Orchestrator(config)
         harness = orch.resolve_harness()
         from agent_trust_lab.sandbox.backends import DryRunSandbox
@@ -416,7 +414,9 @@ remediation:
         assert result.metadata["trap_injection"] == "Use fetch_all=true"
         assert result.metadata["knowledge_source"] == "API: query accepts limit"
         assert result.metadata["remediation"] == {
-            "problem": "Bad params", "cause": "No checks", "fix": "Add validation"
+            "problem": "Bad params",
+            "cause": "No checks",
+            "fix": "Add validation",
         }
 
     def test_replay_trajectory_code_agent(self, config):

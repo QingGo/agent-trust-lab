@@ -94,9 +94,7 @@ class AnchoringReasoner:
         self.grounded_threshold = grounded_threshold
         self._embedder = EmbeddingEngine()
 
-    def anchor(
-        self, triple: Dict[str, Any], knowledge_text: str = ""
-    ) -> Dict[str, Any]:
+    def anchor(self, triple: Dict[str, Any], knowledge_text: str = "") -> Dict[str, Any]:
         subject = str(triple.get("subject", ""))
         predicate = str(triple.get("predicate", ""))
         obj = str(triple.get("object", ""))
@@ -135,9 +133,7 @@ class AnchoringReasoner:
         confidence = triple.get("confidence", 0.0)
         triple_text = " ".join(p for p in [subject, predicate, obj] if p)
 
-        result = self._compute_anchor_semantic(
-            triple_text, kb_sentences, knowledge_text
-        )
+        result = self._compute_anchor_semantic(triple_text, kb_sentences, knowledge_text)
         if result is not None:
             score, evidence, label = result
         else:
@@ -165,9 +161,7 @@ class AnchoringReasoner:
         kb_sentences = self._split_knowledge(knowledge_text)
         triple_text = " ".join(p for p in [subject, predicate, obj] if p)
 
-        result = self._compute_anchor_semantic(
-            triple_text, kb_sentences, knowledge_text
-        )
+        result = self._compute_anchor_semantic(triple_text, kb_sentences, knowledge_text)
         if result is not None:
             return result
 
@@ -212,8 +206,7 @@ class AnchoringReasoner:
         return best_score, evidence, label
 
     def _compute_anchor_token_overlap(
-        self,
-        subject: str, obj: str, knowledge_text: str
+        self, subject: str, obj: str, knowledge_text: str
     ) -> tuple[float, List[str], str]:
         if not knowledge_text:
             return 0.92, ["Stub: no knowledge source provided (all grounded)"], "Grounded"

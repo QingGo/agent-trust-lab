@@ -415,9 +415,16 @@ class TestMarkdownReport:
                     "metadata": {"severity": "medium"},
                     "hallucination": {
                         "step_count": 1,
-                        "steps": [{"step_index": 0, "gsar_label": "Grounded",
-                                   "g_score": 0.8, "u_score": 0.1, "c_score": 0.05,
-                                   "faithfulness_score": 0.9}],
+                        "steps": [
+                            {
+                                "step_index": 0,
+                                "gsar_label": "Grounded",
+                                "g_score": 0.8,
+                                "u_score": 0.1,
+                                "c_score": 0.05,
+                                "faithfulness_score": 0.9,
+                            }
+                        ],
                     },
                 }
             ],
@@ -433,11 +440,14 @@ class TestMarkdownReport:
             "results": [
                 {
                     "trap_id": "t1",
-                    "metadata": {"severity": "medium", "remediation": {
-                        "problem": "Test problem",
-                        "cause": "Test cause",
-                        "fix": "Test fix",
-                    }},
+                    "metadata": {
+                        "severity": "medium",
+                        "remediation": {
+                            "problem": "Test problem",
+                            "cause": "Test cause",
+                            "fix": "Test fix",
+                        },
+                    },
                 }
             ],
         }
@@ -454,9 +464,13 @@ class TestMarkdownReport:
                 {
                     "trap_id": "t1",
                     "metadata": {"severity": "medium"},
-                    "compliance": {"overall": "warn", "dimensions": {},
-                                   "critical_count": 0, "high_count": 1,
-                                   "benign_refusal_rate": 0.25},
+                    "compliance": {
+                        "overall": "warn",
+                        "dimensions": {},
+                        "critical_count": 0,
+                        "high_count": 1,
+                        "benign_refusal_rate": 0.25,
+                    },
                 }
             ],
         }
@@ -471,9 +485,13 @@ class TestMarkdownReport:
                 {
                     "trap_id": "t1",
                     "metadata": {"severity": "medium"},
-                    "compliance": {"overall": "pass", "dimensions": {},
-                                   "critical_count": 0, "high_count": 0,
-                                   "benign_refusal_rate": 0.05},
+                    "compliance": {
+                        "overall": "pass",
+                        "dimensions": {},
+                        "critical_count": 0,
+                        "high_count": 0,
+                        "benign_refusal_rate": 0.05,
+                    },
                 }
             ],
         }
@@ -495,6 +513,7 @@ class TestMarkdownReport:
             assert saved == md
         finally:
             import os
+
             os.unlink(path)
 
     def test_generate_markdown_empty_results(self):
@@ -519,17 +538,22 @@ class TestCLIReportMarkdown:
         data = {
             "config": {"model": "test", "agent_type": "langchain", "sandbox": "docker"},
             "results": [
-                {"trap_id": "t1", "metadata": {"severity": "medium"},
-                 "compliance": {"overall": "pass", "dimensions": {},
-                                "critical_count": 0, "high_count": 0}},
+                {
+                    "trap_id": "t1",
+                    "metadata": {"severity": "medium"},
+                    "compliance": {
+                        "overall": "pass",
+                        "dimensions": {},
+                        "critical_count": 0,
+                        "high_count": 0,
+                    },
+                },
             ],
         }
         with open(results_path, "w") as f:
             json.dump(data, f)
 
-        result = runner.invoke(
-            app, ["report", results_path, "-f", "markdown", "-o", output_path]
-        )
+        result = runner.invoke(app, ["report", results_path, "-f", "markdown", "-o", output_path])
         assert result.exit_code == 0
         assert "Markdown report" in result.stdout
         with open(output_path, "r") as f:
@@ -548,8 +572,6 @@ class TestCLIReportMarkdown:
                 {"config": {"model": "test"}, "results": []},
                 f,
             )
-        result = runner.invoke(
-            app, ["report", results_path, "-f", "xml"]
-        )
+        result = runner.invoke(app, ["report", results_path, "-f", "xml"])
         assert result.exit_code == 1
         assert "Invalid format" in result.stdout

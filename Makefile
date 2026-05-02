@@ -1,4 +1,4 @@
-.PHONY: help lint format test-unit test-all test-manager test-models test-mutator smoke clean install
+.PHONY: help lint format test-unit test-all test-manager test-models test-mutator smoke clean install test-integration test-docker test-slow test-e2e
 
 # Default target
 help:
@@ -11,6 +11,10 @@ help:
 	@echo "  make test-manager    trap manager tests only"
 	@echo "  make test-models     model validation tests only"
 	@echo "  make test-mutator    mutator tests only"
+	@echo "  make test-integration  integration tests (needs API key)"
+	@echo "  make test-docker     Docker integration tests"
+	@echo "  make test-slow       ONNX integration tests"
+	@echo "  make test-e2e        full E2E tests"
 	@echo "  make smoke           CLI validate-traps (L4)"
 	@echo "  make install         editable install with Tsinghua mirror"
 
@@ -59,3 +63,19 @@ test-all:
 # L4: smoke test — validate entire trap library loads correctly
 smoke:
 	$(PYTHON) -m agent_trust_lab.cli validate-traps
+
+# L3: integration tests — requires DEEPSEEK_API_KEY (auto-skipped otherwise)
+test-integration:
+	$(PYTHON) -m pytest tests/integration/ -v -m "integration"
+
+# L3: Docker integration tests (auto-skipped when Docker unavailable)
+test-docker:
+	$(PYTHON) -m pytest tests/integration/ -v -m "docker"
+
+# L3: ONNX integration tests (auto-skipped when models not cached)
+test-slow:
+	$(PYTHON) -m pytest tests/integration/ -v -m "slow"
+
+# L4: full E2E tests (needs API key + Docker + ONNX)
+test-e2e:
+	$(PYTHON) -m pytest tests/integration/ -v -m "e2e"

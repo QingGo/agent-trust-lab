@@ -65,7 +65,7 @@ class GSARClassifier:
             step_entries.append(f"Step {i} (type={step_type}): {content}")
 
         triples_text = "\n".join(
-            f"- {t.get('subject','')} {t.get('predicate','')} {t.get('object','')}"
+            f"- {t.get('subject', '')} {t.get('predicate', '')} {t.get('object', '')}"
             for t in anchored_triples
         )
 

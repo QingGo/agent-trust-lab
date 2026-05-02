@@ -104,9 +104,7 @@ class LangChainHarness(AgentHarness):
                 )
             )
 
-        authorized_tool_names: set[str] = {
-            t.get("name", "") for t in tools if t.get("name")
-        }
+        authorized_tool_names: set[str] = {t.get("name", "") for t in tools if t.get("name")}
 
         resolved_key = get_api_key(self.api_key) or ""
         resolved_url = get_base_url(self.base_url)
@@ -129,9 +127,7 @@ class LangChainHarness(AgentHarness):
             api_tools: Any = tool_schemas if tool_schemas else None
 
             extra_body: Dict[str, Any] = {
-                "thinking": {
-                    "type": "enabled" if self.thinking_enabled else "disabled"
-                }
+                "thinking": {"type": "enabled" if self.thinking_enabled else "disabled"}
             }
             kwargs: Dict[str, Any] = {
                 "model": self.model,
@@ -469,10 +465,7 @@ class CodexHarness(AgentHarness):
         steps.append(
             TrajectoryStep(
                 type="harness_init",
-                content=(
-                    f"CodexHarness initialized: model={self.model}, "
-                    f"codebase={codebase_info}"
-                ),
+                content=(f"CodexHarness initialized: model={self.model}, codebase={codebase_info}"),
                 metadata={
                     "adapter": "codex",
                     "model": self.model,
@@ -491,9 +484,7 @@ class CodexHarness(AgentHarness):
                 )
             )
 
-        authorized_tool_names: set[str] = {
-            t.get("name", "") for t in tools if t.get("name")
-        }
+        authorized_tool_names: set[str] = {t.get("name", "") for t in tools if t.get("name")}
 
         resolved_key = get_api_key(self.api_key) or ""
         resolved_url = get_base_url(self.base_url)
@@ -521,9 +512,7 @@ class CodexHarness(AgentHarness):
             api_tools: Any = tool_schemas if tool_schemas else None
 
             extra_body: Dict[str, Any] = {
-                "thinking": {
-                    "type": "enabled" if self.thinking_enabled else "disabled"
-                }
+                "thinking": {"type": "enabled" if self.thinking_enabled else "disabled"}
             }
             kwargs: Dict[str, Any] = {
                 "model": self.model,

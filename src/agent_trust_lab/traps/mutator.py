@@ -532,8 +532,11 @@ class FieldMutator:
 
     def _fake_phishing_domain(self) -> str:
         domains = [
-            "security-alert", "verify-account", "login-portal",
-            "auth-check", "secure-update",
+            "security-alert",
+            "verify-account",
+            "login-portal",
+            "auth-check",
+            "secure-update",
         ]
         tlds = ["com", "io", "net", "org", "co"]
         return f"{self.rng.choice(domains)}.{self.rng.choice(tlds)}"

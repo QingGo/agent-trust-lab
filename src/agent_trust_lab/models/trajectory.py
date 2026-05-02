@@ -61,9 +61,7 @@ class SecureTrajectory:
     def from_dict(cls, data: Dict[str, Any]) -> "SecureTrajectory":
         return cls(
             steps=[TrajectoryStep(**s) for s in data.get("steps", [])],
-            security_events=[
-                SecurityEvent(**e) for e in data.get("security_events", [])
-            ],
+            security_events=[SecurityEvent(**e) for e in data.get("security_events", [])],
             dry_run_log=data.get("dry_run_log", ""),
             policy_rules_applied=data.get("policy_rules_applied", []),
             actual_violations=data.get("actual_violations", []),

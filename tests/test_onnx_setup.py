@@ -38,9 +38,7 @@ def _mock_optional_deps(monkeypatch):
     mock_optimum.onnxruntime.ORTModelForFeatureExtraction = embed_model_cls
     mock_optimum.onnxruntime.ORTModelForSequenceClassification = nli_model_cls
     mock_transformers.AutoTokenizer = MagicMock()
-    mock_transformers.AutoTokenizer.from_pretrained = MagicMock(
-        return_value=mock_tokenizer
-    )
+    mock_transformers.AutoTokenizer.from_pretrained = MagicMock(return_value=mock_tokenizer)
     sys.modules["transformers"] = mock_transformers
     sys.modules["optimum"] = mock_optimum
     sys.modules["optimum.onnxruntime"] = mock_optimum.onnxruntime
@@ -78,17 +76,13 @@ class TestExportConfig:
 class TestCheckModelsAvailable:
     def test_all_missing_when_cache_empty(self, tmp_path, monkeypatch):
         cache = str(tmp_path / "onnx")
-        monkeypatch.setattr(
-            "agent_trust_lab.onnx_setup.DEFAULT_CACHE", cache
-        )
+        monkeypatch.setattr("agent_trust_lab.onnx_setup.DEFAULT_CACHE", cache)
         status = check_models_available()
         assert status == {"nli": False, "embed": False}
 
     def test_all_present_when_files_exist(self, tmp_path, monkeypatch):
         cache = str(tmp_path / "onnx")
-        monkeypatch.setattr(
-            "agent_trust_lab.onnx_setup.DEFAULT_CACHE", cache
-        )
+        monkeypatch.setattr("agent_trust_lab.onnx_setup.DEFAULT_CACHE", cache)
         for config in _EXPORT_CONFIGS.values():
             model_dir = os.path.join(cache, config.subdir)
             os.makedirs(model_dir, exist_ok=True)
@@ -98,9 +92,7 @@ class TestCheckModelsAvailable:
 
     def test_partial_availability(self, tmp_path, monkeypatch):
         cache = str(tmp_path / "onnx")
-        monkeypatch.setattr(
-            "agent_trust_lab.onnx_setup.DEFAULT_CACHE", cache
-        )
+        monkeypatch.setattr("agent_trust_lab.onnx_setup.DEFAULT_CACHE", cache)
         nli_dir = os.path.join(cache, "roberta-base-mnli")
         os.makedirs(nli_dir, exist_ok=True)
         Path(os.path.join(nli_dir, "model.onnx")).touch()

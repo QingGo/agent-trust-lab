@@ -66,8 +66,7 @@ class CodeHalluChecker:
             return self._stub_check(code, expected_error, step_index=step_index)
 
     def batch_check(self, trajectory: SecureTrajectory) -> List[CodeHalluReport]:
-        code_steps = [(i, s) for i, s in enumerate(trajectory.steps)
-                      if s.type == "code_generation"]
+        code_steps = [(i, s) for i, s in enumerate(trajectory.steps) if s.type == "code_generation"]
         if not code_steps:
             return []
 
@@ -179,7 +178,8 @@ class CodeHalluChecker:
             hallucination_type=hallu_type,
             code_snippet=code_snippet,
             error_message=(
-                f"{error_name}: {error_msg}" if error_name and error_msg
+                f"{error_name}: {error_msg}"
+                if error_name and error_msg
                 else error_msg or error_name or None
             ),
             expected_error_pattern=expected_error,

@@ -62,8 +62,7 @@ class EvaluationResult:
                 / len(self.hallucination_steps),
                 "labels": [h.gsar_label for h in self.hallucination_steps],
                 "steps": [
-                    self._hallu_step_dict(h, self.trajectory)
-                    for h in self.hallucination_steps
+                    self._hallu_step_dict(h, self.trajectory) for h in self.hallucination_steps
                 ],
             }
         if self.code_agent_checks:
@@ -235,6 +234,7 @@ class Orchestrator:
         from agent_trust_lab.hallukg.anchoring import AnchoringReasoner
         from agent_trust_lab.hallukg.classifier import GSARClassifier
         from agent_trust_lab.hallukg.extractor import TripleExtractor
+        from agent_trust_lab.hallukg.multi_hop import MultiHopReasoner
 
         extractor = TripleExtractor(model=self.config.model)
         reasoner = AnchoringReasoner(
@@ -252,6 +252,18 @@ class Orchestrator:
             anchored = reasoner.batch_anchor(triples, knowledge_text=knowledge_source)
             all_triples.extend(anchored)
 
+        if knowledge_source:
+            try:
+                multi_hopper = MultiHopReasoner(
+                    grounded_threshold=self.config.grounded_threshold,
+                )
+                multi_anchored = multi_hopper.batch_anchor(
+                    all_triples, knowledge_text=knowledge_source
+                )
+                all_triples = self._merge_anchor_results(all_triples, multi_anchored)
+            except Exception:
+                logger.debug("Multi-hop reasoning skipped (graph construction failed)")
+
         hallucination_steps = classifier.classify(trajectory.steps, all_triples)
         self._apply_faithfulness_check(hallucination_steps, trajectory)
         code_hallus: List[CodeHalluReport] = []
@@ -265,6 +277,32 @@ class Orchestrator:
             code_hallus = code_checker.batch_check(trajectory)
 
         return hallucination_steps, code_hallus
+
+    @staticmethod
+    def _merge_anchor_results(
+        single_hop: list[dict[str, object]],
+        multi_hop: list[dict[str, object]],
+    ) -> list[dict[str, object]]:
+        if len(single_hop) != len(multi_hop):
+            return single_hop
+        merged: list[dict[str, object]] = []
+        for s, m in zip(single_hop, multi_hop):
+            m_score_raw = m.get("anchor_score", 0.0)
+            s_score_raw = s.get("anchor_score", 0.0)
+            m_score = float(m_score_raw) if m_score_raw else 0.0  # type: ignore[arg-type]
+            s_score = float(s_score_raw) if s_score_raw else 0.0  # type: ignore[arg-type]
+            if m_score > s_score:
+                merged.append(m)
+            elif m.get("multi_hop") and m_score >= s_score * 0.8:
+                m_evidence_raw = m.get("evidence", [])
+                s_evidence_raw = s.get("evidence", [])
+                m["evidence"] = (
+                    list(s_evidence_raw) if isinstance(s_evidence_raw, list) else []
+                ) + (list(m_evidence_raw) if isinstance(m_evidence_raw, list) else [])
+                merged.append(m)
+            else:
+                merged.append(s)
+        return merged
 
     def _apply_faithfulness_check(
         self,
@@ -313,9 +351,7 @@ class Orchestrator:
             traps = traps[:limit]
 
         if self.config.parallel > 1 and len(traps) > 1:
-            return self._run_traps_parallel(
-                traps, mutate=mutate, mutation_seed=mutation_seed
-            )
+            return self._run_traps_parallel(traps, mutate=mutate, mutation_seed=mutation_seed)
 
         harness = self.resolve_harness()
         results: List[EvaluationResult] = []
@@ -341,8 +377,11 @@ class Orchestrator:
             for idx, trap in enumerate(traps):
                 harness = self.resolve_harness()
                 future = executor.submit(
-                    self.run_single, trap,
-                    harness=harness, mutate=mutate, mutation_seed=mutation_seed,
+                    self.run_single,
+                    trap,
+                    harness=harness,
+                    mutate=mutate,
+                    mutation_seed=mutation_seed,
                 )
                 futures[future] = idx
 

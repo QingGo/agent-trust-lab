@@ -31,8 +31,9 @@ class TestTrustLab:
 
     def test_run_traps(self, sample_traps_dir):
         lab = TrustLab(trap_library_path=sample_traps_dir)
-        with patch("agent_trust_lab.llm.get_api_key", return_value=None), patch(
-            "agent_trust_lab.sandbox.image.get_docker_client", return_value=None
+        with (
+            patch("agent_trust_lab.llm.get_api_key", return_value=None),
+            patch("agent_trust_lab.sandbox.image.get_docker_client", return_value=None),
         ):
             results = lab.run(trap_ids=["test_trap_01"])
             assert len(results) == 1
@@ -40,8 +41,9 @@ class TestTrustLab:
 
     def test_run_by_category(self, sample_traps_dir):
         lab = TrustLab(trap_library_path=sample_traps_dir)
-        with patch("agent_trust_lab.llm.get_api_key", return_value=None), patch(
-            "agent_trust_lab.sandbox.image.get_docker_client", return_value=None
+        with (
+            patch("agent_trust_lab.llm.get_api_key", return_value=None),
+            patch("agent_trust_lab.sandbox.image.get_docker_client", return_value=None),
         ):
             results = lab.run(category="general_agent")
             assert len(results) > 0
@@ -57,8 +59,9 @@ class TestTrustLab:
         with tempfile.NamedTemporaryFile(suffix=".json", delete=False) as f:
             output_path = f.name
         try:
-            with patch("agent_trust_lab.llm.get_api_key", return_value=None), patch(
-                "agent_trust_lab.sandbox.image.get_docker_client", return_value=None
+            with (
+                patch("agent_trust_lab.llm.get_api_key", return_value=None),
+                patch("agent_trust_lab.sandbox.image.get_docker_client", return_value=None),
             ):
                 results = lab.run(trap_ids=["test_trap_01"])
                 lab.export(results, output_path)
@@ -69,15 +72,19 @@ class TestTrustLab:
             assert len(data["results"]) == 1
         finally:
             import os
+
             os.unlink(output_path)
 
     def test_report_from_json(self):
         lab = TrustLab()
         with tempfile.NamedTemporaryFile(suffix=".json", delete=False, mode="w") as f:
-            json.dump({
-                "config": {"model": "test", "agent_type": "langchain", "sandbox": "docker"},
-                "results": [{"trap_id": "t1", "metadata": {"severity": "medium"}}],
-            }, f)
+            json.dump(
+                {
+                    "config": {"model": "test", "agent_type": "langchain", "sandbox": "docker"},
+                    "results": [{"trap_id": "t1", "metadata": {"severity": "medium"}}],
+                },
+                f,
+            )
             json_path = f.name
         try:
             html = lab.report(json_path)
@@ -85,6 +92,7 @@ class TestTrustLab:
             assert "t1" in html
         finally:
             import os
+
             os.unlink(json_path)
 
 
@@ -99,8 +107,9 @@ class TestCodeLab:
 
     def test_run_code_sets_category(self, sample_traps_dir):
         lab = CodeLab(trap_library_path=sample_traps_dir)
-        with patch("agent_trust_lab.llm.get_api_key", return_value=None), patch(
-            "agent_trust_lab.sandbox.image.get_docker_client", return_value=None
+        with (
+            patch("agent_trust_lab.llm.get_api_key", return_value=None),
+            patch("agent_trust_lab.sandbox.image.get_docker_client", return_value=None),
         ):
             results = lab.run_code(trap_ids=["test_trap_03"])
             assert len(results) == 1
