@@ -29,6 +29,8 @@ class GSARClassifier:
 
     Uses real DeepSeek LLM calls via instructor for structured classification.
     Falls back to stub on any API error.
+
+    Session 9: Added classify_multi_model() for multi-model voting.
     """
 
     def __init__(self, model: str = ""):
@@ -44,6 +46,127 @@ class GSARClassifier:
         except Exception as e:
             logger.warning("GSARClassifier LLM call failed, falling back to stub: %s", e)
             return self._classify_stub(steps)
+
+    def classify_multi_model(
+        self,
+        steps: list,
+        anchored_triples: List[Dict[str, Any]],
+        model_list: List[str],
+    ) -> List[HalluStepReport]:
+        """Classify steps using multiple models concurrently with majority voting.
+
+        Runs each model in its own thread, collects results, and aggregates:
+        - GSAR label: majority vote across models
+        - G/U/C/F scores: arithmetic mean across models
+        - evidence: taken from the model with highest agreement
+
+        Falls back to stub if all model calls fail.
+
+        Args:
+            steps: TrajectoryStep list.
+            anchored_triples: Anchored triple dicts for grounding evidence.
+            model_list: List of model identifiers to use for classification.
+
+        Returns:
+            List of HalluStepReport with voted labels and averaged scores.
+        """
+        if not model_list:
+            return self.classify(steps, anchored_triples)
+        if len(model_list) == 1:
+            original_model = self.model
+            self.model = model_list[0]
+            try:
+                return self.classify(steps, anchored_triples)
+            finally:
+                self.model = original_model
+
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+
+        results_by_model: Dict[str, List[HalluStepReport]] = {}
+        original_model = self.model
+
+        with ThreadPoolExecutor(max_workers=len(model_list)) as executor:
+            futures: dict = {}
+            for model in model_list:
+                classifier_for_model = GSARClassifier(model=model)
+
+                def _run_classify(
+                    clf=classifier_for_model,
+                    steps=steps,
+                    triples=anchored_triples,
+                ):
+                    try:
+                        return clf._classify_with_llm(steps, triples)
+                    except Exception:
+                        pass
+                    try:
+                        return clf._classify_stub(steps)
+                    except Exception:
+                        return None
+
+                future = executor.submit(_run_classify)
+                futures[future] = model
+
+            for future in as_completed(futures):
+                model = futures[future]
+                try:
+                    result = future.result()
+                    if result is not None:
+                        results_by_model[model] = result
+                except Exception as e:
+                    logger.warning(
+                        "Multi-model classification failed for %s: %s", model, e
+                    )
+
+        self.model = original_model
+
+        if not results_by_model:
+            logger.warning("All multi-model classifications failed, falling back to stub")
+            return self._classify_stub(steps)
+
+        if len(results_by_model) == 1:
+            return list(results_by_model.values())[0]
+
+        merged: List[HalluStepReport] = []
+        num_steps = len(steps)
+        for i in range(num_steps):
+            step_reports = [
+                reports[i]
+                for reports in results_by_model.values()
+                if i < len(reports)
+            ]
+            if not step_reports:
+                continue
+
+            labels = [r.gsar_label for r in step_reports]
+            label_counts: Dict[str, int] = {}
+            for lab in labels:
+                label_counts[lab] = label_counts.get(lab, 0) + 1
+
+            voted_label = max(label_counts, key=lambda k: label_counts[k])
+            g = sum(r.g_score for r in step_reports) / len(step_reports)
+            u = sum(r.u_score for r in step_reports) / len(step_reports)
+            c = sum(r.c_score for r in step_reports) / len(step_reports)
+            f = sum(r.faithfulness_score for r in step_reports) / len(step_reports)
+
+            evidence = step_reports[0].evidence if step_reports[0].evidence else []
+
+            explanation = f"Multi-model vote ({len(step_reports)} models): {label_counts}"
+
+            merged.append(
+                HalluStepReport(
+                    step_index=i,
+                    gsar_label=voted_label,
+                    g_score=round(g, 4),
+                    u_score=round(u, 4),
+                    c_score=round(c, 4),
+                    faithfulness_score=round(f, 4),
+                    evidence=evidence,
+                    explanation=explanation,
+                )
+            )
+
+        return merged
 
     def _classify_with_llm(
         self,

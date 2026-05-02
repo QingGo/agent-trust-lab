@@ -110,7 +110,7 @@ class TestDockerSandbox:
         assert len(trajectory.steps) >= 3
         assert trajectory.steps[0].type == "sandbox_init"
         assert trajectory.metadata["backend"] == "docker"
-        assert trajectory.metadata["stub"] is True
+        assert trajectory.metadata.get("stub") is False
 
     def test_run_with_dangerous_command(self):
         sandbox = DockerSandbox()

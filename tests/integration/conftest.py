@@ -58,8 +58,8 @@ def _has_onnx() -> bool:
     try:
         from agent_trust_lab.onnx_setup import check_models_available
 
-        avail, _, _ = check_models_available()
-        return all(avail.values())
+        avail = check_models_available()
+        return len(avail) > 0 and all(avail.values())
     except Exception:
         return False
 

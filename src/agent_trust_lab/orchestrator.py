@@ -265,6 +265,19 @@ class Orchestrator:
                 logger.debug("Multi-hop reasoning skipped (graph construction failed)")
 
         hallucination_steps = classifier.classify(trajectory.steps, all_triples)
+
+        if self.config.model_list:
+            try:
+                multi_model_steps = classifier.classify_multi_model(
+                    trajectory.steps, all_triples, self.config.model_list
+                )
+                if multi_model_steps:
+                    hallucination_steps = multi_model_steps
+            except Exception as e:
+                logger.warning(
+                    "Multi-model classification failed, using single-model result: %s", e
+                )
+
         self._apply_faithfulness_check(hallucination_steps, trajectory)
         code_hallus: List[CodeHalluReport] = []
 

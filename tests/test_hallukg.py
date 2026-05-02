@@ -510,8 +510,189 @@ class TestGSARClassifier:
                 assert len(result) == 1
                 assert "stub" in result[0].explanation.lower()
 
+    def test_classify_multi_model_single_model(self):
+        """Single model in model_list should behave like classify()."""
+        classifier = GSARClassifier()
+        steps = [TrajectoryStep(type="thought", content="step")]
+        result = classifier.classify_multi_model(steps, [], ["deepseek-v4-flash"])
+        assert len(result) == 1
+        assert result[0].step_index == 0
+
+    def test_classify_multi_model_empty_list_falls_back(self):
+        """Empty model_list should delegate to classify()."""
+        classifier = GSARClassifier()
+        steps = [TrajectoryStep(type="thought", content="step")]
+        result = classifier.classify_multi_model(steps, [], [])
+        assert len(result) == 1
+
+    def test_classify_multi_model_voting(self):
+        """Multi-model voting should merge results from multiple models."""
+        from agent_trust_lab.hallukg.classifier import GSAROutput, GSARStepResult
+
+        model_a_response = GSAROutput(
+            steps=[
+                GSARStepResult(
+                    step_index=0,
+                    gsar_label="Grounded",
+                    g_score=0.9,
+                    u_score=0.05,
+                    c_score=0.0,
+                    faithfulness_score=0.95,
+                    evidence=["a evidence"],
+                    explanation="model A grounded",
+                ),
+            ]
+        )
+        model_b_response = GSAROutput(
+            steps=[
+                GSARStepResult(
+                    step_index=0,
+                    gsar_label="Grounded",
+                    g_score=0.7,
+                    u_score=0.2,
+                    c_score=0.1,
+                    faithfulness_score=0.8,
+                    evidence=["b evidence"],
+                    explanation="model B grounded",
+                ),
+            ]
+        )
+        model_c_response = GSAROutput(
+            steps=[
+                GSARStepResult(
+                    step_index=0,
+                    gsar_label="Ungrounded",
+                    g_score=0.1,
+                    u_score=0.9,
+                    c_score=0.0,
+                    faithfulness_score=0.3,
+                    evidence=["c evidence"],
+                    explanation="model C ungrounded",
+                ),
+            ]
+        )
+
+        with patch("agent_trust_lab.llm.get_api_key", return_value="mock-key"):
+            with patch("agent_trust_lab.llm.create_openai_client"):
+                with patch("instructor.from_openai") as mock_instructor:
+                    mock_client = mock_instructor.return_value
+                    mock_client.chat.completions.create.side_effect = [
+                        model_a_response,
+                        model_b_response,
+                        model_c_response,
+                    ]
+                    classifier = GSARClassifier()
+                    steps = [TrajectoryStep(type="thought", content="step")]
+                    result = classifier.classify_multi_model(
+                        steps, [], ["model-a", "model-b", "model-c"]
+                    )
+                    assert len(result) == 1
+                    assert result[0].gsar_label == "Grounded"
+                    assert 0.5 < result[0].g_score < 0.9
+                    assert "Multi-model vote" in result[0].explanation
+
+    def test_classify_multi_model_majority_ungrounded(self):
+        """Majority vote should select the label with most votes."""
+        from agent_trust_lab.hallukg.classifier import GSAROutput, GSARStepResult
+
+        u1 = GSAROutput(
+            steps=[
+                GSARStepResult(
+                    step_index=0, gsar_label="Ungrounded", g_score=0.1, u_score=0.9,
+                    c_score=0.0, faithfulness_score=0.2, explanation="u1",
+                ),
+            ]
+        )
+        u2 = GSAROutput(
+            steps=[
+                GSARStepResult(
+                    step_index=0, gsar_label="Ungrounded", g_score=0.0, u_score=1.0,
+                    c_score=0.0, faithfulness_score=0.1, explanation="u2",
+                ),
+            ]
+        )
+        g1 = GSAROutput(
+            steps=[
+                GSARStepResult(
+                    step_index=0, gsar_label="Grounded", g_score=0.9, u_score=0.0,
+                    c_score=0.0, faithfulness_score=0.9, explanation="g1",
+                ),
+            ]
+        )
+
+        with patch("agent_trust_lab.llm.get_api_key", return_value="mock-key"):
+            with patch("agent_trust_lab.llm.create_openai_client"):
+                with patch("instructor.from_openai") as mock_instructor:
+                    mock_client = mock_instructor.return_value
+                    mock_client.chat.completions.create.side_effect = [u1, u2, g1]
+                    classifier = GSARClassifier()
+                    steps = [TrajectoryStep(type="thought", content="step")]
+                    result = classifier.classify_multi_model(
+                        steps, [], ["m1", "m2", "m3"]
+                    )
+                    assert result[0].gsar_label == "Ungrounded"
+
+    def test_classify_multi_model_all_fail_fallback(self):
+        """When all real LLM calls fail, each model uses stub internally and voting still works."""
+        with patch("agent_trust_lab.llm.get_api_key", return_value="mock-key"):
+            with patch(
+                "agent_trust_lab.llm.create_openai_client",
+                side_effect=Exception("All down"),
+            ):
+                classifier = GSARClassifier()
+                steps = [TrajectoryStep(type="thought", content="step")]
+                result = classifier.classify_multi_model(
+                    steps, [], ["m1", "m2"]
+                )
+                assert len(result) == 1
+                assert "Multi-model vote" in result[0].explanation
+                assert result[0].gsar_label is not None
+
+    def test_classify_multi_model_preserves_step_indices(self):
+        """Multi-model voting should preserve correct step indices for multiple steps."""
+        from agent_trust_lab.hallukg.classifier import GSAROutput, GSARStepResult
+
+        response = GSAROutput(
+            steps=[
+                GSARStepResult(
+                    step_index=0, gsar_label="Grounded", g_score=0.8, u_score=0.1,
+                    c_score=0.05, faithfulness_score=0.9, explanation="step0",
+                ),
+                GSARStepResult(
+                    step_index=1, gsar_label="Ungrounded", g_score=0.2, u_score=0.7,
+                    c_score=0.3, faithfulness_score=0.4, explanation="step1",
+                ),
+                GSARStepResult(
+                    step_index=2, gsar_label="Complementary", g_score=0.5, u_score=0.3,
+                    c_score=0.2, faithfulness_score=0.6, explanation="step2",
+                ),
+            ]
+        )
+
+        with patch("agent_trust_lab.llm.get_api_key", return_value="mock-key"):
+            with patch("agent_trust_lab.llm.create_openai_client"):
+                with patch("instructor.from_openai") as mock_instructor:
+                    mock_client = mock_instructor.return_value
+                    mock_client.chat.completions.create.side_effect = [response, response]
+                    classifier = GSARClassifier()
+                    steps = [
+                        TrajectoryStep(type="thought", content="s0"),
+                        TrajectoryStep(type="thought", content="s1"),
+                        TrajectoryStep(type="thought", content="s2"),
+                    ]
+                    result = classifier.classify_multi_model(steps, [], ["m1", "m2"])
+                    assert len(result) == 3
+                    assert result[0].step_index == 0
+                    assert result[1].step_index == 1
+                    assert result[2].step_index == 2
+
 
 class TestFaithfulnessChecker:
+    @pytest.fixture(autouse=True)
+    def _disable_onnx_nli(self):
+        with patch.object(FaithfulnessChecker, "_check_onnx", return_value=False):
+            yield
+
     def test_check_returns_float_between_0_and_1(self):
         checker = FaithfulnessChecker()
         score = checker.check(["the agent called the database_query tool"], ["database_query"])
@@ -972,6 +1153,92 @@ class TestKnowledgeGraph:
         kg = KnowledgeGraph()
         kg.add_knowledge_text("")
         assert kg.size() == 0
+
+    def test_stop_word_filtering(self):
+        from agent_trust_lab.hallukg.multi_hop import KnowledgeGraph
+
+        kg = KnowledgeGraph()
+        kg.add_knowledge_text(
+            "the email_send tool handles mailing with the cc parameter"
+        )
+        assert kg.size() > 0
+        assert kg.entity_exists("email_send") or kg.entity_exists("email")
+
+    def test_stop_words_removed_from_edges(self):
+        from agent_trust_lab.hallukg.multi_hop import KnowledgeGraph
+
+        kg = KnowledgeGraph()
+        kg.add_knowledge_sentence("the tool is for testing")
+        assert not kg.entity_exists("the")
+        assert not kg.entity_exists("is")
+
+    def test_sentence_with_only_stop_words(self):
+        from agent_trust_lab.hallukg.multi_hop import KnowledgeGraph
+
+        kg = KnowledgeGraph()
+        kg.add_knowledge_sentence("the and for with")
+        assert kg.size() == 0
+
+    def test_entity_resolve_exact_match(self):
+        from agent_trust_lab.hallukg.multi_hop import KnowledgeGraph
+
+        kg = KnowledgeGraph()
+        kg.add_triple({"subject": "email_send", "predicate": "accepts", "object": "cc"})
+        resolved = kg.entity_resolve("email_send")
+        assert resolved is not None
+
+    def test_entity_resolve_normalized_match(self):
+        from agent_trust_lab.hallukg.multi_hop import KnowledgeGraph
+
+        kg = KnowledgeGraph()
+        kg.add_triple({"subject": "emails", "predicate": "use", "object": "servers"})
+        resolved = kg.entity_resolve("emails")
+        assert resolved is not None
+
+    def test_entity_resolve_no_match(self):
+        from agent_trust_lab.hallukg.multi_hop import KnowledgeGraph
+
+        kg = KnowledgeGraph()
+        kg.add_triple({"subject": "x", "predicate": "p", "object": "y"})
+        resolved = kg.entity_resolve("no_such_entity_xyz")
+        assert resolved is None
+
+    def test_normalize_entity_plural(self):
+        from agent_trust_lab.hallukg.multi_hop import _normalize_entity
+
+        assert _normalize_entity("tools") == "tool"
+
+    def test_normalize_entity_suffix(self):
+        from agent_trust_lab.hallukg.multi_hop import _normalize_entity
+
+        assert _normalize_entity("testing") == "test"
+        assert _normalize_entity("handled") == "handl"
+
+    def test_normalize_entity_short_word(self):
+        from agent_trust_lab.hallukg.multi_hop import _normalize_entity
+
+        assert _normalize_entity("is") == "is"
+        assert _normalize_entity("a") == "a"
+
+    def test_add_knowledge_text_stop_word_edges_filtered(self):
+        from agent_trust_lab.hallukg.multi_hop import KnowledgeGraph
+
+        kg = KnowledgeGraph()
+        kg.add_knowledge_text(
+            "The email_send tool is for sending emails. The database_query tool is for data."
+        )
+        assert kg.size() > 0
+        assert not kg.entity_exists("the")
+        assert not kg.entity_exists("is")
+        assert not kg.entity_exists("for")
+
+    def test_entity_resolve_substring_match(self):
+        from agent_trust_lab.hallukg.multi_hop import KnowledgeGraph
+
+        kg = KnowledgeGraph()
+        kg.add_triple({"subject": "email_send", "predicate": "handles", "object": "mailing"})
+        resolved = kg.entity_resolve("email")
+        assert resolved == "email" or resolved is not None
 
 
 class TestMultiHopReasoner:

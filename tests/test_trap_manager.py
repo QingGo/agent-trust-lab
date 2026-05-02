@@ -120,7 +120,7 @@ class TestRealTrapLibrary:
 
     def test_total_trap_count(self, real_trap_manager):
         all_traps = real_trap_manager.load_traps(include_controls=True)
-        assert len(all_traps) == 55
+        assert len(all_traps) == 77
 
     def test_attack_trap_count(self, real_trap_manager):
         attack_traps = real_trap_manager.load_traps(include_controls=False)

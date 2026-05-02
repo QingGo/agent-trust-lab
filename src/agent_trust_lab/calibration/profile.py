@@ -27,6 +27,7 @@ class CalibrationProfile:
     kappa_compliance: float = 0.0
     platt_params: Dict[str, Dict[str, float]] = field(default_factory=dict)
     metadata: Dict[str, Any] = field(default_factory=dict)
+    distribution_signature: Dict[str, Any] = field(default_factory=dict)
 
     def get_calibrated_score(self, score_name: str, raw_score: float) -> Optional[float]:
         """Apply Platt scaling to a raw score.
@@ -59,6 +60,7 @@ class CalibrationProfile:
             "kappa_compliance": self.kappa_compliance,
             "platt_params": self.platt_params,
             "metadata": self.metadata,
+            "distribution_signature": self.distribution_signature,
         }
 
     @classmethod
@@ -75,6 +77,7 @@ class CalibrationProfile:
             kappa_compliance=data.get("kappa_compliance", 0.0),
             platt_params=data.get("platt_params", {}),
             metadata=data.get("metadata", {}),
+            distribution_signature=data.get("distribution_signature", {}),
         )
 
 
@@ -271,6 +274,7 @@ def run_calibration(
         kappa_gsar_ci=kappa_ci,
         kappa_compliance=0.0,
         platt_params=platt_params,
+        distribution_signature=build_distribution_signature(results_data),
     )
 
     save_profile(profile)
@@ -326,3 +330,123 @@ def _align_results_with_annotations(
             pairs.append({"raw": raw_step, "annotation": ann})
 
     return pairs
+
+
+def build_distribution_signature(
+    results_data: Dict[str, Any],
+) -> Dict[str, Any]:
+    """Build a distribution signature from evaluation results.
+
+    Captures per-trap-type score statistics (mean, std, count) for
+    g_score, u_score, c_score, and faithfulness_score.  Used to
+    detect distribution drift vs. the calibration baseline.
+
+    Returns:
+        Dict[trap_type]["scores"][score_name] = {"mean": ..., "std": ..., "count": ...}
+    """
+    from statistics import mean, stdev
+
+    by_type: Dict[str, Dict[str, List[float]]] = {}
+    for result in results_data.get("results", []):
+        trap_type = result.get("trap_type", "unknown")
+        hallu = result.get("hallucination")
+        if not hallu:
+            continue
+        if trap_type not in by_type:
+            by_type[trap_type] = {
+                "g_score": [],
+                "u_score": [],
+                "c_score": [],
+                "faithfulness_score": [],
+            }
+        for step in hallu.get("steps", []):
+            for score_name in ("g_score", "u_score", "c_score", "faithfulness_score"):
+                by_type[trap_type][score_name].append(step.get(score_name, 0.0))
+
+    signature: Dict[str, Any] = {}
+    for trap_type, score_buckets in by_type.items():
+        type_sig: Dict[str, Dict[str, float]] = {}
+        for score_name, values in score_buckets.items():
+            if len(values) < 2:
+                type_sig[score_name] = {
+                    "mean": mean(values) if values else 0.0,
+                    "std": 0.0,
+                    "count": len(values),
+                }
+            else:
+                type_sig[score_name] = {
+                    "mean": round(mean(values), 6),
+                    "std": round(stdev(values), 6),
+                    "count": len(values),
+                }
+        signature[trap_type] = {"scores": type_sig}
+
+    return signature
+
+
+def check_calibration_freshness(
+    profile: CalibrationProfile,
+    current_results: Dict[str, Any],
+    drift_threshold: float = 0.15,
+) -> Tuple[bool, float, str]:
+    """Check whether a calibration profile is still fresh given current results.
+
+    Compares the current evaluation score distribution with the distribution
+    signature stored in the profile at calibration time. Uses a simplified
+    Jensen-Shannon-style comparison between score mean vectors.
+
+    Args:
+        profile: The calibration profile with a distribution_signature field.
+        current_results: Current evaluation results dict (from orchestrator export).
+        drift_threshold: Maximum acceptable drift score before warning (default 0.15).
+
+    Returns:
+        (is_fresh, drift_score, warning_message) tuple.
+        is_fresh is True if drift_score < drift_threshold.
+    """
+    stored_sig = profile.distribution_signature
+    if not stored_sig:
+        return True, 0.0, "No distribution signature stored - cannot assess freshness."
+
+    current_sig = build_distribution_signature(current_results)
+    if not current_sig:
+        return True, 0.0, "No score data in current results - cannot assess freshness."
+
+    score_names = ["g_score", "u_score", "c_score", "faithfulness_score"]
+    diffs: List[float] = []
+    matched_types = 0
+
+    for trap_type, type_sig in stored_sig.items():
+        current_type = current_sig.get(trap_type, {})
+        stored_scores = type_sig.get("scores", {})
+        current_scores = current_type.get("scores", {})
+        if not stored_scores or not current_scores:
+            continue
+        matched_types += 1
+        for sn in score_names:
+            stored_stat = stored_scores.get(sn, {})
+            current_stat = current_scores.get(sn, {})
+            s_mean = stored_stat.get("mean")
+            c_mean = current_stat.get("mean")
+            if s_mean is not None and c_mean is not None:
+                diffs.append(abs(s_mean - c_mean))
+
+    if not diffs:
+        return True, 0.0, (
+            "No overlapping score dimensions between stored and current distributions."
+        )
+
+    drift_score = round(sum(diffs) / len(diffs), 6)
+    is_fresh = drift_score < drift_threshold
+
+    if is_fresh:
+        msg = f"Calibration appears fresh (drift={drift_score:.4f} < threshold={drift_threshold})"
+    else:
+        msg = (
+            f"WARNING: Calibration may be stale! "
+            f"Mean score drift={drift_score:.4f} exceeds threshold={drift_threshold}. "
+            f"Matched {matched_types} trap types, {len(diffs)} score dimensions. "
+            f"Consider re-running calibration."
+        )
+
+    return is_fresh, drift_score, msg

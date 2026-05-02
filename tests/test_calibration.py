@@ -9,6 +9,8 @@ import pytest
 from agent_trust_lab.calibration.profile import (
     CalibrationProfile,
     _apply_calibration_to_results,
+    build_distribution_signature,
+    check_calibration_freshness,
     compute_cohens_kappa,
     list_profiles,
     load_profile,
@@ -21,6 +23,25 @@ from agent_trust_lab.calibration.scaler import (
     fit_platt_scaling,
 )
 from agent_trust_lab.report import ReportGenerator
+
+
+def _make_step(**kwargs):
+    """Create a step dict with default zero scores."""
+    defaults = {
+        "step_index": 0, "g_score": 0.0, "u_score": 0.0,
+        "c_score": 0.0, "faithfulness_score": 0.0,
+    }
+    defaults.update(kwargs)
+    return defaults
+
+
+def _make_hallu_result(trap_id, trap_type, steps):
+    """Create a result dict with hallucination steps."""
+    return {
+        "trap_id": trap_id,
+        "trap_type": trap_type,
+        "hallucination": {"steps": steps},
+    }
 
 
 class TestPlattScaling:
@@ -573,3 +594,303 @@ class TestCLICalibrate:
         )
         assert result.exit_code == 1
         assert "not found" in result.stdout
+
+
+class TestDistributionSignature:
+    def test_build_signature_from_results(self):
+        data = {
+            "results": [
+                _make_hallu_result("t1", "authority_appeal", [
+                    _make_step(
+                        step_index=0, g_score=0.8, u_score=0.1,
+                        c_score=0.05, faithfulness_score=0.9,
+                    ),
+                    _make_step(
+                        step_index=1, g_score=0.2, u_score=0.7,
+                        c_score=0.3, faithfulness_score=0.4,
+                    ),
+                ]),
+            ],
+        }
+        sig = build_distribution_signature(data)
+        assert "authority_appeal" in sig
+        scores = sig["authority_appeal"]["scores"]
+        assert scores["g_score"]["mean"] > 0.0
+        assert scores["g_score"]["count"] == 2
+        assert "std" in scores["g_score"]
+
+    def test_build_signature_empty(self):
+        sig = build_distribution_signature({"results": []})
+        assert sig == {}
+
+    def test_build_signature_no_hallucination(self):
+        sig = build_distribution_signature({"results": [{"trap_id": "t1", "trap_type": "test"}]})
+        assert sig == {}
+
+    def test_build_signature_single_step_per_type(self):
+        data = {
+            "results": [
+                {
+                    "trap_id": "t1",
+                    "trap_type": "benign_control",
+                    "hallucination": {
+                        "steps": [
+                            _make_step(
+                                                                                                                                                    step_index=0,
+                                                                                                                                                    g_score=0.9,
+                                                                                                                                                    u_score=0.0,
+                                                                                                                                                    c_score=0.0,
+                                                                                                                                                    faithfulness_score=0.95,
+                                ),
+                        ],
+                    },
+                },
+            ],
+        }
+        sig = build_distribution_signature(data)
+        scores = sig["benign_control"]["scores"]
+        assert scores["g_score"]["mean"] == 0.9
+        assert scores["g_score"]["std"] == 0.0
+        assert scores["g_score"]["count"] == 1
+
+    def test_build_signature_multiple_types(self):
+        data = {
+            "results": [
+                {
+                    "trap_id": "t1",
+                    "trap_type": "type_a",
+                    "hallucination": {
+                        "steps": [
+                            _make_step(
+                                                                                                                                                    step_index=0,
+                                                                                                                                                    g_score=0.5,
+                                                                                                                                                    u_score=0.5,
+                                                                                                                                                    c_score=0.0,
+                                                                                                                                                    faithfulness_score=0.6,
+                                ),
+                        ],
+                    },
+                },
+                {
+                    "trap_id": "t2",
+                    "trap_type": "type_b",
+                    "hallucination": {
+                        "steps": [
+                            _make_step(
+                                                                                                                                                    step_index=0,
+                                                                                                                                                    g_score=0.8,
+                                                                                                                                                    u_score=0.1,
+                                                                                                                                                    c_score=0.1,
+                                                                                                                                                    faithfulness_score=0.9,
+                                ),
+                        ],
+                    },
+                },
+            ],
+        }
+        sig = build_distribution_signature(data)
+        assert "type_a" in sig
+        assert "type_b" in sig
+
+
+class TestCalibrationFreshness:
+    def test_fresh_when_similar_distribution(self):
+        data = {
+            "results": [
+                {
+                    "trap_id": "t1",
+                    "trap_type": "test_type",
+                    "hallucination": {
+                        "steps": [
+                            _make_step(
+                                                                                                                                                    step_index=0,
+                                                                                                                                                    g_score=0.8,
+                                                                                                                                                    u_score=0.1,
+                                                                                                                                                    c_score=0.05,
+                                                                                                                                                    faithfulness_score=0.9,
+                                ),
+                        ],
+                    },
+                },
+            ],
+        }
+        sig = build_distribution_signature(data)
+        profile = CalibrationProfile(
+            profile_id="fresh-test",
+            benchmark="b",
+            version="v",
+            distribution_signature=sig,
+        )
+        is_fresh, drift, msg = check_calibration_freshness(profile, data)
+        assert is_fresh is True
+        assert drift == 0.0
+
+    def test_stale_when_distribution_shifted(self):
+        calib_data = {
+            "results": [
+                {
+                    "trap_id": "t1",
+                    "trap_type": "test_type",
+                    "hallucination": {
+                        "steps": [
+                            _make_step(
+                                                                                                                                                    step_index=0,
+                                                                                                                                                    g_score=0.9,
+                                                                                                                                                    u_score=0.0,
+                                                                                                                                                    c_score=0.0,
+                                                                                                                                                    faithfulness_score=0.95,
+                                ),
+                        ],
+                    },
+                },
+            ],
+        }
+        current_data = {
+            "results": [
+                {
+                    "trap_id": "t1",
+                    "trap_type": "test_type",
+                    "hallucination": {
+                        "steps": [
+                            _make_step(
+                                                                                                                                                    step_index=0,
+                                                                                                                                                    g_score=0.2,
+                                                                                                                                                    u_score=0.8,
+                                                                                                                                                    c_score=0.3,
+                                                                                                                                                    faithfulness_score=0.3,
+                                ),
+                        ],
+                    },
+                },
+            ],
+        }
+        sig = build_distribution_signature(calib_data)
+        profile = CalibrationProfile(
+            profile_id="stale-test",
+            benchmark="b",
+            version="v",
+            distribution_signature=sig,
+        )
+        is_fresh, drift, msg = check_calibration_freshness(profile, current_data)
+        assert drift > 0.3
+
+    def test_fresh_when_no_signature(self):
+        profile = CalibrationProfile(
+            profile_id="no-sig",
+            benchmark="b",
+            version="v",
+            distribution_signature={},
+        )
+        is_fresh, drift, msg = check_calibration_freshness(profile, {"results": []})
+        assert is_fresh is True
+        assert "No distribution signature" in msg
+
+    def test_drift_score_reasonable(self):
+        calib_data = {
+            "results": [
+                {
+                    "trap_id": "t1",
+                    "trap_type": "test_type",
+                    "hallucination": {
+                        "steps": [
+                            _make_step(
+                                                                                                                                                    step_index=0,
+                                                                                                                                                    g_score=0.5,
+                                                                                                                                                    u_score=0.3,
+                                                                                                                                                    c_score=0.1,
+                                                                                                                                                    faithfulness_score=0.6,
+                                ),
+                            _make_step(
+                                                                                                                                                    step_index=1,
+                                                                                                                                                    g_score=0.6,
+                                                                                                                                                    u_score=0.2,
+                                                                                                                                                    c_score=0.1,
+                                                                                                                                                    faithfulness_score=0.7,
+                                ),
+                        ],
+                    },
+                },
+            ],
+        }
+        current_data = {
+            "results": [
+                {
+                    "trap_id": "t1",
+                    "trap_type": "test_type",
+                    "hallucination": {
+                        "steps": [
+                            _make_step(
+                                                                                                                                                    step_index=0,
+                                                                                                                                                    g_score=0.4,
+                                                                                                                                                    u_score=0.4,
+                                                                                                                                                    c_score=0.2,
+                                                                                                                                                    faithfulness_score=0.5,
+                                ),
+                            _make_step(
+                                                                                                                                                    step_index=1,
+                                                                                                                                                    g_score=0.5,
+                                                                                                                                                    u_score=0.3,
+                                                                                                                                                    c_score=0.1,
+                                                                                                                                                    faithfulness_score=0.6,
+                                ),
+                        ],
+                    },
+                },
+            ],
+        }
+        sig = build_distribution_signature(calib_data)
+        profile = CalibrationProfile(
+            profile_id="drift-test",
+            benchmark="b",
+            version="v",
+            distribution_signature=sig,
+        )
+        is_fresh, drift, msg = check_calibration_freshness(
+            profile, current_data, drift_threshold=0.1
+        )
+        assert 0.0 < drift < 1.0
+
+    def test_empty_results_returns_true(self):
+        calib_data = {
+            "results": [
+                {
+                    "trap_id": "t1",
+                    "trap_type": "test_type",
+                    "hallucination": {
+                        "steps": [
+                            _make_step(
+                                                                                                                                                    step_index=0,
+                                                                                                                                                    g_score=0.5,
+                                                                                                                                                    u_score=0.3,
+                                                                                                                                                    c_score=0.1,
+                                                                                                                                                    faithfulness_score=0.6,
+                                ),
+                        ],
+                    },
+                },
+            ],
+        }
+        sig = build_distribution_signature(calib_data)
+        profile = CalibrationProfile(
+            profile_id="empty-res",
+            benchmark="b",
+            version="v",
+            distribution_signature=sig,
+        )
+        is_fresh, drift, msg = check_calibration_freshness(
+            profile, {"results": [{"trap_id": "t1"}]}
+        )
+        assert is_fresh is True
+
+    def test_roundtrip_profile_with_signature(self):
+        sig = {"test_type": {"scores": {"g_score": {"mean": 0.7, "std": 0.1, "count": 10}}}}
+        profile = CalibrationProfile(
+            profile_id="sig-test",
+            benchmark="b",
+            version="v",
+            distribution_signature=sig,
+        )
+        data = profile.to_dict()
+        assert "distribution_signature" in data
+        restored = CalibrationProfile.from_dict(data)
+        assert restored.distribution_signature == sig

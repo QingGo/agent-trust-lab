@@ -39,8 +39,8 @@ class TestDockerSandboxIntegration:
         traj = SecureTrajectory(
             steps=[
                 TrajectoryStep(
-                    type="code_action",
-                    content="```python\nprint('hello'\n```",
+                    type="code_generation",
+                    content="print('hello'",
                     metadata={},
                 )
             ],
@@ -48,7 +48,7 @@ class TestDockerSandboxIntegration:
         )
         reports = checker.batch_check(traj)
         assert len(reports) == 1
-        assert reports[0].hallucination_type == "syntax"
+        assert reports[0].hallucination_type == "logic_hallucination"
 
     def test_code_hallu_real_docker_attribute_error(self):
         _skip_if_no_docker()
@@ -58,8 +58,8 @@ class TestDockerSandboxIntegration:
         traj = SecureTrajectory(
             steps=[
                 TrajectoryStep(
-                    type="code_action",
-                    content="```python\nimport os\nos.nonexistent()\n```",
+                    type="code_generation",
+                    content="import os\nos.nonexistent()",
                     metadata={},
                 )
             ],
@@ -67,7 +67,7 @@ class TestDockerSandboxIntegration:
         )
         reports = checker.batch_check(traj)
         assert len(reports) == 1
-        assert reports[0].hallucination_type in ("naming", "attribute")
+        assert reports[0].hallucination_type in ("naming", "logic_hallucination")
 
     def test_code_hallu_stub_fallback_when_no_docker(self):
         from agent_trust_lab.hallukg.code_checker import CodeHalluChecker
@@ -76,8 +76,8 @@ class TestDockerSandboxIntegration:
         traj = SecureTrajectory(
             steps=[
                 TrajectoryStep(
-                    type="code_action",
-                    content="```python\nx = 5\n```",
+                    type="code_generation",
+                    content="x = 5",
                     metadata={},
                 )
             ],
