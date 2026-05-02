@@ -5,6 +5,9 @@ Usage:
     python scripts/export_onnx_embedding.py [--output-dir ~/.cache/agent-trust-lab/onnx/all-MiniLM-L6-v2]
     python scripts/export_onnx_embedding.py --hf-mirror https://hf-mirror.com
 
+Or use the CLI:
+    agent-trust-lab setup-onnx --model embed
+
 Requirements:
     pip install optimum[onnxruntime] transformers torch sentence-transformers --index-url https://pypi.tuna.tsinghua.edu.cn/simple
     (torch may not be available for Python 3.13 on x86_64 macOS — run on Linux or Apple Silicon)
@@ -16,33 +19,11 @@ import sys
 
 
 def export_model(model_name: str, output_dir: str, hf_token: str = "") -> None:
-    os.makedirs(output_dir, exist_ok=True)
+    from agent_trust_lab.onnx_setup import _EXPORT_CONFIGS, export_model as _export
 
-    from transformers import AutoTokenizer
-
-    print(f"Exporting {model_name} to ONNX...")
-    print(f"Output directory: {output_dir}")
-
-    tokenizer = AutoTokenizer.from_pretrained(model_name, token=hf_token or None)
-
-    from optimum.onnxruntime import ORTModelForFeatureExtraction
-
-    model = ORTModelForFeatureExtraction.from_pretrained(
-        model_name,
-        export=True,
-        token=hf_token or None,
-        pooling="mean",
-        normalize=True,
-    )
-
-    model.save_pretrained(output_dir)
-    tokenizer.save_pretrained(output_dir)
-
-    model_path = os.path.join(output_dir, "model.onnx")
-    tokenizer_path = os.path.join(output_dir, "tokenizer.json")
-
-    print(f"Exported model: {model_path} ({os.path.getsize(model_path) / 1024 / 1024:.1f} MB)")
-    print(f"Exported tokenizer: {tokenizer_path}")
+    config = _EXPORT_CONFIGS["embed"]
+    result = _export(config, output_dir, hf_token)
+    print(f"Exported model: {result['path']} ({result['size_mb']:.1f} MB)")
     print("Done.")
 
 

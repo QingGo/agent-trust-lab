@@ -70,11 +70,14 @@ class TestRegisterAdapter:
 class TestListAdapters:
     def test_core_adapters_registered(self):
         adapters = list_adapters()
-        assert "langchain" in adapters
-        assert "openai" in adapters
+        assert "claude-code" in adapters
         assert "codex" in adapters
         assert "docker" in adapters
         assert "dry-run" in adapters
+        assert "gemini-cli" in adapters
+        assert "langchain" in adapters
+        assert "openai" in adapters
+        assert "opencode" in adapters
 
     def test_list_returns_sorted(self):
         adapters = list_adapters()
@@ -282,3 +285,102 @@ variation_rules: []
         orch = Orchestrator(config)
         with pytest.raises(ValueError, match="Unknown harness"):
             orch.resolve_harness()
+
+    def test_resolve_opencode_harness(self, tmp_path):
+        from agent_trust_lab.orchestrator import Orchestrator
+
+        trap_dir = tmp_path / "traps" / "general"
+        trap_dir.mkdir(parents=True)
+        (trap_dir / "t1.yaml").write_text(
+            """trap_id: t1
+trap_type: benign_control
+version: "1.0.0"
+severity: none
+difficulty: trivial
+category: general_agent
+base_task: "Test."
+tools: [{name: file_read}]
+trap_injection: ""
+variation_rules: []
+""",
+            encoding="utf-8",
+        )
+
+        config = EvaluationConfig(
+            agent_type="opencode",
+            model="deepseek-v4-flash",
+            api_key="sk-test-opencode",
+            trap_library_path=str(trap_dir),
+        )
+        orch = Orchestrator(config)
+        harness = orch.resolve_harness()
+        from agent_trust_lab.adapters.cli_harnesses import OpenCodeHarness
+
+        assert isinstance(harness, OpenCodeHarness)
+        assert harness.api_key == "sk-test-opencode"
+
+    def test_resolve_claude_code_harness(self, tmp_path):
+        from agent_trust_lab.orchestrator import Orchestrator
+
+        trap_dir = tmp_path / "traps" / "code"
+        trap_dir.mkdir(parents=True)
+        (trap_dir / "t1.yaml").write_text(
+            """trap_id: t1
+trap_type: benign_code_control
+version: "1.0.0"
+severity: none
+difficulty: trivial
+category: code_agent
+base_task: "Test."
+tools: [{name: file_read}]
+trap_injection: ""
+variation_rules: []
+""",
+            encoding="utf-8",
+        )
+
+        config = EvaluationConfig(
+            agent_type="claude-code",
+            model="claude-sonnet-4-20250514",
+            api_key="sk-ant-test",
+            trap_library_path=str(trap_dir),
+        )
+        orch = Orchestrator(config)
+        harness = orch.resolve_harness()
+        from agent_trust_lab.adapters.cli_harnesses import ClaudeCodeHarness
+
+        assert isinstance(harness, ClaudeCodeHarness)
+        assert harness.api_key == "sk-ant-test"
+
+    def test_resolve_gemini_cli_harness(self, tmp_path):
+        from agent_trust_lab.orchestrator import Orchestrator
+
+        trap_dir = tmp_path / "traps" / "code"
+        trap_dir.mkdir(parents=True)
+        (trap_dir / "t1.yaml").write_text(
+            """trap_id: t1
+trap_type: benign_code_control
+version: "1.0.0"
+severity: none
+difficulty: trivial
+category: code_agent
+base_task: "Test."
+tools: [{name: file_read}]
+trap_injection: ""
+variation_rules: []
+""",
+            encoding="utf-8",
+        )
+
+        config = EvaluationConfig(
+            agent_type="gemini-cli",
+            model="gemini-2.5-pro",
+            api_key="sk-gemini-test",
+            trap_library_path=str(trap_dir),
+        )
+        orch = Orchestrator(config)
+        harness = orch.resolve_harness()
+        from agent_trust_lab.adapters.cli_harnesses import GeminiCLIHarness
+
+        assert isinstance(harness, GeminiCLIHarness)
+        assert harness.api_key == "sk-gemini-test"
