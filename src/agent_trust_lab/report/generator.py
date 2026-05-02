@@ -88,6 +88,10 @@ TEMPLATE = """<!DOCTYPE html>
     Agent: {{ config.agent_type }} &nbsp;|&nbsp;
     Sandbox: {{ config.sandbox }} &nbsp;|&nbsp;
     Generated: {{ generated_at }}
+    {% if summary.has_calibration %}
+    <br>Calibrated with: {{ summary.calibration_profile_id }}
+    (Cohen's &kappa; = {{ "%.3f"|format(summary.calibration_kappa) }})
+    {% endif %}
   </div>
 </div>
 
@@ -167,11 +171,20 @@ TEMPLATE = """<!DOCTYPE html>
 
     {% if trap.hallucination %}
     <div class="detail-section">
-      <h4>Hallucination Analysis ({{ trap.hallucination.step_count }} steps)</h4>
+      <h4>Hallucination Analysis ({{ trap.hallucination.step_count }} steps)
+        {% if trap.hallucination.has_calibrated %}
+        <span style="font-size:11px;color:#718096;"> — Calibrated</span>
+        {% endif %}
+      </h4>
       <table>
         <tr>
           <th>#</th><th>GSAR Label</th>
-          <th>G-Score</th><th>U-Score</th><th>C-Score</th><th>Faithfulness</th>
+          <th>G-Score</th>
+          {% if trap.hallucination.has_calibrated %}<th>G (cal)</th>{% endif %}
+          <th>U-Score</th>
+          <th>C-Score</th>
+          <th>Faithfulness</th>
+          {% if trap.hallucination.has_calibrated %}<th>Faith (cal)</th>{% endif %}
         </tr>
         {% for step in trap.hallucination.steps %}
         <tr>
@@ -189,12 +202,28 @@ TEMPLATE = """<!DOCTYPE html>
             </span>
             {{ "%.2f"|format(step.g_score) }}
           </td>
+          {% if trap.hallucination.has_calibrated %}
+          <td style="color:#2b6cb0;font-weight:600;">
+            {{ "%.2f"|format(step.calibrated_g_score|default(0)) }}
+          </td>
+          {% endif %}
           <td>{{ "%.2f"|format(step.u_score) }}</td>
           <td>{{ "%.2f"|format(step.c_score) }}</td>
           <td>{{ "%.2f"|format(step.faithfulness_score) }}</td>
+          {% if trap.hallucination.has_calibrated %}
+          <td style="color:#2b6cb0;font-weight:600;">
+            {{ "%.2f"|format(step.calibrated_faithfulness_score|default(0)) }}
+          </td>
+          {% endif %}
         </tr>
         {% endfor %}
       </table>
+      {% if trap.hallucination.has_calibrated %}
+      <p style="font-size:11px;color:#718096;margin-top:4px;">
+        Calibrated G: {{ "%.2f"|format(trap.hallucination.calibrated_avg_g) }} &nbsp;|&nbsp;
+        Calibrated Faithfulness: {{ "%.2f"|format(trap.hallucination.calibrated_avg_faithfulness) }}
+      </p>
+      {% endif %}
     </div>
     {% endif %}
 
@@ -270,12 +299,14 @@ class ReportGenerator:
         self,
         data: Dict[str, Any],
         output_path: Optional[str] = None,
+        calibration: Optional[Dict[str, Any]] = None,
     ) -> str:
         """Generate an HTML report from evaluation result data.
 
         Args:
             data: Dict with 'config' and 'results' keys (from orchestrator JSON export).
             output_path: If provided, writes HTML to this file path.
+            calibration: Optional calibration profile dict for showing calibrated scores.
 
         Returns:
             The complete HTML string.
@@ -283,8 +314,8 @@ class ReportGenerator:
         config = data.get("config", {})
         raw_results = data.get("results", [])
 
-        traps = self._enrich_traps(raw_results)
-        summary = self._compute_summary(raw_results)
+        traps = self._enrich_traps(raw_results, calibration=calibration)
+        summary = self._compute_summary(raw_results, calibration=calibration)
         generated_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
 
         html = self._template.render(
@@ -303,7 +334,10 @@ class ReportGenerator:
         return html
 
     @staticmethod
-    def _enrich_traps(raw_results: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    def _enrich_traps(
+        raw_results: List[Dict[str, Any]],
+        calibration: Optional[Dict[str, Any]] = None,
+    ) -> List[Dict[str, Any]]:
         enriched = []
         for r in raw_results:
             trap: Dict[str, Any] = {
@@ -320,7 +354,16 @@ class ReportGenerator:
             if "compliance" in r and r["compliance"] is not None:
                 trap["compliance"] = r["compliance"]
             if "hallucination" in r and r["hallucination"] is not None:
-                trap["hallucination"] = r["hallucination"]
+                hallu = dict(r["hallucination"])
+                if calibration:
+                    hallu["has_calibrated"] = True
+                    hallu["calibrated_avg_g"] = ReportGenerator._compute_calibrated_avg(
+                        hallu.get("steps", []), "g_score"
+                    )
+                    hallu["calibrated_avg_faithfulness"] = ReportGenerator._compute_calibrated_avg(
+                        hallu.get("steps", []), "faithfulness_score"
+                    )
+                trap["hallucination"] = hallu
             if "code_hallu" in r and r["code_hallu"] is not None:
                 trap["code_hallu"] = r["code_hallu"]
             remediation = r.get("metadata", {}).get("remediation")
@@ -330,7 +373,20 @@ class ReportGenerator:
         return enriched
 
     @staticmethod
-    def _compute_summary(raw_results: List[Dict[str, Any]]) -> Dict[str, Any]:
+    def _compute_calibrated_avg(
+        steps: List[Dict[str, Any]], score_name: str
+    ) -> float:
+        cal_key = f"calibrated_{score_name}"
+        cal_scores = [s[cal_key] for s in steps if cal_key in s]
+        if not cal_scores:
+            return 0.0
+        return sum(cal_scores) / len(cal_scores)
+
+    @staticmethod
+    def _compute_summary(
+        raw_results: List[Dict[str, Any]],
+        calibration: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
         total = len(raw_results)
         mutated = sum(1 for r in raw_results if r.get("mutated"))
 
@@ -357,7 +413,7 @@ class ReportGenerator:
                 g_scores.append(hallu.get("avg_g_score", 0.0))
                 faith_scores.append(hallu.get("avg_faithfulness", 0.0))
 
-        return {
+        summary: Dict[str, Any] = {
             "total_traps": total,
             "mutated_count": mutated,
             "compliance_pass": pass_count,
@@ -365,7 +421,14 @@ class ReportGenerator:
             "compliance_fail": fail_count,
             "avg_g_score": sum(g_scores) / len(g_scores) if g_scores else 0.0,
             "avg_faithfulness": sum(faith_scores) / len(faith_scores) if faith_scores else 0.0,
+            "has_calibration": calibration is not None,
         }
+
+        if calibration:
+            summary["calibration_profile_id"] = calibration.get("profile_id", "")
+            summary["calibration_kappa"] = calibration.get("kappa_gsar", 0.0)
+
+        return summary
 
     @classmethod
     def from_json_file(cls, json_path: str) -> str:

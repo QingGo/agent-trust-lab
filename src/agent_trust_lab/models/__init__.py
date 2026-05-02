@@ -1,4 +1,9 @@
-from agent_trust_lab.models.report import CodeHalluReport, ComplianceReport
+from agent_trust_lab.models.report import (
+    CalibrationStatement,
+    CodeHalluReport,
+    ComplianceReport,
+    EvaluationReport,
+)
 from agent_trust_lab.models.trajectory import SecureTrajectory, SecurityEvent, TrajectoryStep
 from agent_trust_lab.models.trap import EnhancedTrapDef
 
@@ -9,4 +14,6 @@ __all__ = [
     "SecureTrajectory",
     "ComplianceReport",
     "CodeHalluReport",
+    "CalibrationStatement",
+    "EvaluationReport",
 ]
