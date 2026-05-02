@@ -56,6 +56,17 @@ class EvaluationResult:
                 "avg_faithfulness": sum(h.faithfulness_score for h in self.hallucination_steps)
                 / len(self.hallucination_steps),
                 "labels": [h.gsar_label for h in self.hallucination_steps],
+                "steps": [
+                    {
+                        "step_index": h.step_index,
+                        "gsar_label": h.gsar_label,
+                        "g_score": h.g_score,
+                        "u_score": h.u_score,
+                        "c_score": h.c_score,
+                        "faithfulness_score": h.faithfulness_score,
+                    }
+                    for h in self.hallucination_steps
+                ],
             }
         if self.code_agent_checks:
             result["code_hallu"] = {
@@ -186,6 +197,7 @@ class Orchestrator:
             hallu_steps, code_hallus = self._run_hallukg(
                 trajectory=trajectory,
                 is_code_agent=trap.category == "code_agent",
+                knowledge_source=trap.knowledge_source or "",
             )
 
         return EvaluationResult(
@@ -219,6 +231,7 @@ class Orchestrator:
         self,
         trajectory: SecureTrajectory,
         is_code_agent: bool = False,
+        knowledge_source: str = "",
     ) -> tuple[List[HalluStepReport], List[CodeHalluReport]]:
         from agent_trust_lab.hallukg.anchoring import AnchoringReasoner
         from agent_trust_lab.hallukg.classifier import GSARClassifier
@@ -233,7 +246,7 @@ class Orchestrator:
             if step.type == "trap_injection":
                 continue
             triples = extractor.extract(step.content)
-            anchored = reasoner.batch_anchor(triples)
+            anchored = reasoner.batch_anchor(triples, knowledge_text=knowledge_source)
             all_triples.extend(anchored)
 
         hallucination_steps = classifier.classify(trajectory.steps, all_triples)

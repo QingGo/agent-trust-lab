@@ -16,8 +16,14 @@ wheels/
 # environment
 .env
 
+# evaluation outputs
+results.json
+results.html
+results/
+
 # project
 docs/
 !docs/implementation_notes.md
 .agent_memory.md
 .handoff.md
+.DS_Store

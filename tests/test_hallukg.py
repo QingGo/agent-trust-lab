@@ -125,7 +125,33 @@ class TestAnchoringReasoner:
         assert "evidence" in result
         assert isinstance(result["evidence"], list)
         assert len(result["evidence"]) == 1
-        assert result["score"] == 0.92
+        assert result["anchor_score"] == 0.92
+
+    def test_anchor_preserves_input_triple_fields(self):
+        reasoner = AnchoringReasoner()
+        triple = {
+            "subject": "email_send",
+            "predicate": "accepts",
+            "object": "cc parameter",
+            "confidence": 0.85,
+        }
+        result = reasoner.anchor(triple)
+        assert result["subject"] == "email_send"
+        assert result["predicate"] == "accepts"
+        assert result["object"] == "cc parameter"
+        assert result["confidence"] == 0.85
+
+    def test_anchor_adds_grounding_fields(self):
+        reasoner = AnchoringReasoner()
+        triple = {"subject": "agent", "predicate": "ran", "object": "test"}
+        result = reasoner.anchor(triple)
+        assert result["label"] in ("Grounded", "Ungrounded")
+        assert isinstance(result["evidence"], list)
+        assert isinstance(result["anchor_score"], float)
+        assert "subject" in result
+        assert "predicate" in result
+        assert "object" in result
+        assert "confidence" in result
 
     def test_batch_anchor_returns_list(self):
         reasoner = AnchoringReasoner()
@@ -140,12 +166,75 @@ class TestAnchoringReasoner:
         results = reasoner.batch_anchor(triples)
         for r in results:
             assert r["label"] == "Grounded"
-            assert r["score"] == 0.92
+            assert r["anchor_score"] == 0.92
 
     def test_batch_anchor_empty_list(self):
         reasoner = AnchoringReasoner()
         results = reasoner.batch_anchor([])
         assert results == []
+
+    def test_batch_anchor_with_matching_knowledge_text(self):
+        reasoner = AnchoringReasoner()
+        triples = [
+            {"subject": "email_send", "predicate": "accepts", "object": "cc", "confidence": 0.9},
+            {"subject": "xyz_unknown", "predicate": "does", "object": "nothing", "confidence": 0.8},
+        ]
+        knowledge = "email_send accepts: to, subject, body, cc. dashboard_query: query monitoring."
+        results = reasoner.batch_anchor(triples, knowledge_text=knowledge)
+        assert len(results) == 2
+        assert results[0]["label"] == "Grounded"
+        assert results[1]["label"] == "Ungrounded"
+
+    def test_batch_anchor_ungrounded_when_no_match(self):
+        reasoner = AnchoringReasoner()
+        triples = [
+            {"subject": "unknown_tool", "predicate": "does", "object": "nothing",
+             "confidence": 0.5},
+        ]
+        knowledge = "email_send accepts: to, subject, body."
+        results = reasoner.batch_anchor(triples, knowledge_text=knowledge)
+        assert results[0]["label"] == "Ungrounded"
+        assert results[0]["anchor_score"] == 0.15
+
+    def test_batch_anchor_empty_knowledge_fallback(self):
+        reasoner = AnchoringReasoner()
+        triples = [
+            {"subject": "anything", "predicate": "does", "object": "stuff", "confidence": 0.5},
+        ]
+        results = reasoner.batch_anchor(triples, knowledge_text="")
+        assert results[0]["label"] == "Grounded"
+        assert results[0]["anchor_score"] == 0.92
+
+    def test_batch_anchor_object_match(self):
+        reasoner = AnchoringReasoner()
+        triples = [
+            {"subject": "unknown_sig", "predicate": "has", "object": "email_send",
+             "confidence": 0.7},
+        ]
+        knowledge = "email_send accepts: to, subject, body."
+        results = reasoner.batch_anchor(triples, knowledge_text=knowledge)
+        assert results[0]["label"] == "Grounded"
+
+    def test_batch_anchor_case_insensitive_match(self):
+        reasoner = AnchoringReasoner()
+        triples = [
+            {"subject": "Email_Send", "predicate": "accepts", "object": "CC", "confidence": 0.9},
+        ]
+        knowledge = "email_send accepts: to, subject, body."
+        results = reasoner.batch_anchor(triples, knowledge_text=knowledge)
+        assert results[0]["label"] == "Grounded"
+
+    def test_batch_anchor_preserves_fields_with_knowledge(self):
+        reasoner = AnchoringReasoner()
+        triples = [
+            {"subject": "foo", "predicate": "bar", "object": "baz", "confidence": 0.99},
+        ]
+        results = reasoner.batch_anchor(triples, knowledge_text="foo bar baz")
+        assert results[0]["subject"] == "foo"
+        assert results[0]["predicate"] == "bar"
+        assert results[0]["object"] == "baz"
+        assert results[0]["confidence"] == 0.99
+        assert results[0]["label"] == "Grounded"
 
 
 class TestGSARClassifier:

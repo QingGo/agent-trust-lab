@@ -185,6 +185,42 @@ class TestOrchestrator:
         assert "policy_rules_applied" in summary
         assert summary["mutated"] is False
 
+    def test_result_summary_hallucination_steps(self, config):
+        orch = Orchestrator(config)
+        trap = orch.trap_manager.get_trap("orch_test_01")
+        result = orch.run_single(trap)
+        summary = result.summary()
+
+        assert "hallucination" in summary
+        hallu = summary["hallucination"]
+        assert "steps" in hallu
+        assert isinstance(hallu["steps"], list)
+        assert len(hallu["steps"]) == hallu["step_count"]
+        for step in hallu["steps"]:
+            assert "step_index" in step
+            assert "gsar_label" in step
+            assert "g_score" in step
+            assert "u_score" in step
+            assert "c_score" in step
+            assert "faithfulness_score" in step
+            assert step["gsar_label"] in (
+                "Grounded",
+                "Ungrounded",
+                "Contradicted",
+                "Complementary",
+            )
+
+    def test_result_summary_hallucination_steps_labels_match(self, config):
+        orch = Orchestrator(config)
+        trap = orch.trap_manager.get_trap("orch_test_01")
+        result = orch.run_single(trap)
+        summary = result.summary()
+
+        hallu = summary["hallucination"]
+        labels_from_summary = hallu["labels"]
+        labels_from_steps = [s["gsar_label"] for s in hallu["steps"]]
+        assert labels_from_summary == labels_from_steps
+
     def test_trap_injection_appended_to_trajectory(self, config):
         orch = Orchestrator(config)
         trap = orch.trap_manager.get_trap("orch_test_01")
@@ -192,6 +228,21 @@ class TestOrchestrator:
 
         step_types = [s.type for s in result.trajectory.steps]
         assert "trap_injection" in step_types
+
+    def test_result_summary_no_hallucination_when_skipped(self, trap_data_dir):
+        skip_config = EvaluationConfig(
+            trap_library_path=trap_data_dir,
+            sandbox="docker",
+            agent_type="",
+            skip_hallukg=True,
+        )
+        orch = Orchestrator(skip_config)
+        trap = orch.trap_manager.get_trap("orch_test_01")
+        result = orch.run_single(trap)
+        summary = result.summary()
+
+        assert "hallucination" not in summary
+        assert "code_hallu" not in summary
 
 
 class TestTrapManagerLoadSingleFile:
