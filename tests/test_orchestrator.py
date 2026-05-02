@@ -354,6 +354,144 @@ remediation:
 
         assert len(call_counts) == 3
 
+    def test_replay_trajectory_basic(self, config):
+        orch = Orchestrator(config)
+        from agent_trust_lab.models.trajectory import SecureTrajectory, TrajectoryStep
+
+        traj = SecureTrajectory(
+            steps=[
+                TrajectoryStep(type="harness_init", content="init"),
+                TrajectoryStep(type="thought", content="I will read a file"),
+                TrajectoryStep(
+                    type="action",
+                    content="Called file_read(...)",
+                    tools_called=["file_read"],
+                ),
+                TrajectoryStep(type="observation", content="File content: hello world"),
+            ],
+            security_events=[],
+            metadata={"adapter": "test"},
+        )
+
+        result = orch.replay_trajectory(
+            trajectory=traj,
+            trap_id="replay_test",
+            trap_type="benign_control",
+            category="general_agent",
+        )
+
+        assert isinstance(result, EvaluationResult)
+        assert result.trap_id == "replay_test"
+        assert result.trap_type == "benign_control"
+        assert result.category == "general_agent"
+        assert result.compliance is not None
+        assert result.mutated is False
+
+    def test_replay_trajectory_with_metadata(self, config):
+        orch = Orchestrator(config)
+        from agent_trust_lab.models.trajectory import SecureTrajectory, TrajectoryStep
+
+        traj = SecureTrajectory(
+            steps=[TrajectoryStep(type="thought", content="test")],
+            security_events=[],
+        )
+
+        result = orch.replay_trajectory(
+            trajectory=traj,
+            trap_id="r2",
+            trap_type="parameter_hallucination",
+            category="general_agent",
+            knowledge_source="API: query accepts limit",
+            severity="high",
+            difficulty="hard",
+            base_task="Query database",
+            trap_injection="Use fetch_all=true",
+            remediation={"problem": "Bad params", "cause": "No checks", "fix": "Add validation"},
+        )
+
+        assert result.trap_id == "r2"
+        assert result.metadata["severity"] == "high"
+        assert result.metadata["difficulty"] == "hard"
+        assert result.metadata["base_task"] == "Query database"
+        assert result.metadata["trap_injection"] == "Use fetch_all=true"
+        assert result.metadata["knowledge_source"] == "API: query accepts limit"
+        assert result.metadata["remediation"] == {
+            "problem": "Bad params", "cause": "No checks", "fix": "Add validation"
+        }
+
+    def test_replay_trajectory_code_agent(self, config):
+        orch = Orchestrator(config)
+        from agent_trust_lab.models.trajectory import SecureTrajectory, TrajectoryStep
+
+        traj = SecureTrajectory(
+            steps=[
+                TrajectoryStep(type="thought", content="I will write code"),
+                TrajectoryStep(type="code_generation", content="import fake_lib"),
+            ],
+            security_events=[],
+        )
+
+        result = orch.replay_trajectory(
+            trajectory=traj,
+            trap_id="r3",
+            trap_type="code_semantic_hallucination",
+            category="code_agent",
+        )
+
+        assert result.category == "code_agent"
+
+    def test_replay_trajectory_skip_hallukg(self, trap_data_dir):
+        skip_config = EvaluationConfig(
+            trap_library_path=str(trap_data_dir),
+            sandbox="docker",
+            agent_type="",
+            skip_hallukg=True,
+        )
+        orch = Orchestrator(skip_config)
+        from agent_trust_lab.models.trajectory import SecureTrajectory, TrajectoryStep
+
+        traj = SecureTrajectory(
+            steps=[TrajectoryStep(type="thought", content="test")],
+            security_events=[],
+        )
+
+        result = orch.replay_trajectory(
+            trajectory=traj,
+            trap_id="r4",
+            trap_type="benign_control",
+            category="general_agent",
+        )
+
+        assert result.compliance is not None
+        assert result.hallucination_steps == []
+        assert result.code_agent_checks == []
+
+    def test_replay_trajectory_summary(self, config):
+        orch = Orchestrator(config)
+        from agent_trust_lab.models.trajectory import SecureTrajectory, TrajectoryStep
+
+        traj = SecureTrajectory(
+            steps=[
+                TrajectoryStep(type="thought", content="I will check the database"),
+                TrajectoryStep(type="action", content="Called db_query(tool=...)"),
+            ],
+            security_events=[],
+        )
+
+        result = orch.replay_trajectory(
+            trajectory=traj,
+            trap_id="r5",
+            trap_type="parameter_hallucination",
+            category="general_agent",
+            base_task="Check DB",
+        )
+
+        summary = result.summary()
+        assert summary["trap_id"] == "r5"
+        assert "steps_count" in summary
+        assert "metadata" in summary
+        assert summary["metadata"]["base_task"] == "Check DB"
+
 
 class TestTrapManagerLoadSingleFile:
     def test_load_valid_file(self, trap_data_dir):

@@ -19,6 +19,8 @@ class EvaluationConfig:
     max_steps: int = 10
     parallel: int = 1
     calibration_profile: Optional[str] = None
+    thinking_enabled: bool = False
+    reasoning_effort: str = ""
     model_list: List[str] = field(default_factory=list)
     policy_rules: Optional[List[str]] = None
     codebase_path: Optional[str] = None

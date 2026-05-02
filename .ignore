@@ -1,8 +1,9 @@
-docs/
-.agent_memory.md
-.handoff.md
+!docs/
+!.agent_memory.md
+!.handoff.md
 
 # evaluation outputs
-results.json
-results.html
-results/
+!results.json
+!results.html
+!results/
+!compare_results/

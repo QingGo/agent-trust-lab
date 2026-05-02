@@ -56,18 +56,15 @@ class EvaluationResult:
                 "step_count": len(self.hallucination_steps),
                 "avg_g_score": sum(h.g_score for h in self.hallucination_steps)
                 / len(self.hallucination_steps),
+                "avg_u_score": sum(h.u_score for h in self.hallucination_steps)
+                / len(self.hallucination_steps),
+                "avg_c_score": sum(h.c_score for h in self.hallucination_steps)
+                / len(self.hallucination_steps),
                 "avg_faithfulness": sum(h.faithfulness_score for h in self.hallucination_steps)
                 / len(self.hallucination_steps),
                 "labels": [h.gsar_label for h in self.hallucination_steps],
                 "steps": [
-                    {
-                        "step_index": h.step_index,
-                        "gsar_label": h.gsar_label,
-                        "g_score": h.g_score,
-                        "u_score": h.u_score,
-                        "c_score": h.c_score,
-                        "faithfulness_score": h.faithfulness_score,
-                    }
+                    self._hallu_step_dict(h, self.trajectory)
                     for h in self.hallucination_steps
                 ],
             }
@@ -77,6 +74,25 @@ class EvaluationResult:
                 "types": [c.hallucination_type for c in self.code_agent_checks],
             }
         return result
+
+    def _hallu_step_dict(self, h: HalluStepReport, trajectory: SecureTrajectory) -> Dict[str, Any]:
+        step_data: Dict[str, Any] = {
+            "step_index": h.step_index,
+            "gsar_label": h.gsar_label,
+            "g_score": h.g_score,
+            "u_score": h.u_score,
+            "c_score": h.c_score,
+            "faithfulness_score": h.faithfulness_score,
+        }
+        if h.step_index < len(trajectory.steps):
+            traj_step = trajectory.steps[h.step_index]
+            step_data["step_type"] = traj_step.type
+            step_data["step_content"] = traj_step.content
+        if h.evidence:
+            step_data["evidence"] = h.evidence
+        if h.explanation:
+            step_data["explanation"] = h.explanation
+        return step_data
 
 
 class Orchestrator:
@@ -93,46 +109,17 @@ class Orchestrator:
         return self._traps_cache
 
     def resolve_harness(self, agent_type: Optional[str] = None) -> AgentHarness:
+        from agent_trust_lab.adapters.registry import resolve
+
         agent = agent_type or self.config.agent_type
         sandbox_type = self.config.sandbox.lower()
 
-        if agent == "langchain":
-            from agent_trust_lab.adapters.harnesses import LangChainHarness
-
-            return LangChainHarness(
-                model=self.config.model,
-                api_key=self.config.api_key,
-                base_url=self.config.base_url,
-            )
-
-        if agent == "openai":
-            from agent_trust_lab.adapters.harnesses import OpenAIFunctionHarness
-
-            return OpenAIFunctionHarness(model=self.config.model)
-
-        if agent == "codex":
-            from agent_trust_lab.adapters.harnesses import CodexHarness
-
-            return CodexHarness(
-                model=self.config.model,
-                codebase_path=self.config.codebase_path,
-            )
-
-        if sandbox_type == "dry-run":
-            from agent_trust_lab.sandbox.backends import DryRunSandbox
-
-            return DryRunSandbox()
-
-        if sandbox_type == "docker":
-            from agent_trust_lab.sandbox.backends import DockerSandbox
-
-            return DockerSandbox(
-                image=self.config.sandbox_image,
-                timeout=self.config.timeout,
-                network_enabled=self.config.sandbox_network,
-                tmpfs_size=self.config.sandbox_tmpfs_size,
-                docker_host=self.config.docker_host,
-            )
+        for name in (agent, sandbox_type):
+            cls = resolve(name)
+            if cls is not None:
+                from_config = getattr(cls, "from_config", None)
+                if from_config is not None:
+                    return from_config(self.config)
 
         raise ValueError(
             f"Unknown harness configuration: agent_type={agent}, sandbox={sandbox_type}"
@@ -206,6 +193,9 @@ class Orchestrator:
         metadata: Dict[str, Any] = {
             "severity": trap.severity,
             "difficulty": trap.difficulty,
+            "base_task": trap.base_task,
+            "trap_injection": trap.trap_injection or "",
+            "knowledge_source": trap.knowledge_source or "",
         }
         if trap.remediation is not None:
             metadata["remediation"] = {
@@ -386,13 +376,85 @@ class Orchestrator:
 
     def export_results(self, results: List[EvaluationResult], output_path: str) -> None:
         os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
+        config_label = f"{self.config.model}"
+        if self.config.thinking_enabled:
+            config_label += f" (think {self.config.reasoning_effort})"
         payload = {
             "config": {
                 "agent_type": self.config.agent_type,
                 "model": self.config.model,
                 "sandbox": self.config.sandbox,
+                "thinking_enabled": self.config.thinking_enabled,
+                "reasoning_effort": self.config.reasoning_effort,
             },
             "results": [r.summary() for r in results],
         }
         with open(output_path, "w", encoding="utf-8") as f:
             json.dump(payload, f, indent=2, ensure_ascii=False)
+
+    def replay_trajectory(
+        self,
+        trajectory: SecureTrajectory,
+        trap_id: str,
+        trap_type: str,
+        category: str,
+        knowledge_source: str = "",
+        severity: str = "medium",
+        difficulty: str = "medium",
+        base_task: str = "",
+        trap_injection: str = "",
+        remediation: Optional[Dict[str, Any]] = None,
+    ) -> EvaluationResult:
+        """Re-run compliance audit and hallucination detection on an existing trajectory.
+
+        Useful for replaying a captured trajectory with updated detector config (e.g.
+        a newer model, different thinking settings, or a new calibration profile).
+        Skips harness execution entirely.
+
+        Args:
+            trajectory: Previously captured SecureTrajectory.
+            trap_id: Original trap identifier for metadata.
+            trap_type: Original trap type (e.g. "parameter_hallucination").
+            category: "general_agent" or "code_agent".
+            knowledge_source: Known facts text for anchoring reasoner.
+            severity: Trap severity for metadata.
+            difficulty: Trap difficulty for metadata.
+            base_task: Original base task for metadata.
+            trap_injection: Original trap injection text for metadata.
+            remediation: Optional remediation dict with problem/cause/fix.
+
+        Returns:
+            EvaluationResult with compliance, hallucination, and code artifacts.
+        """
+        is_code_agent = category == "code_agent"
+        is_benign = trap_type in ("benign_control", "benign_code_control")
+
+        compliance = self._audit_compliance(trajectory, is_code_agent, is_benign)
+
+        hallu_steps: List[HalluStepReport] = []
+        code_hallus: List[CodeHalluReport] = []
+        if not self.config.skip_hallukg:
+            hallu_steps, code_hallus = self._run_hallukg(
+                trajectory, is_code_agent=is_code_agent, knowledge_source=knowledge_source
+            )
+
+        metadata: Dict[str, Any] = {
+            "severity": severity,
+            "difficulty": difficulty,
+            "base_task": base_task,
+            "trap_injection": trap_injection,
+            "knowledge_source": knowledge_source,
+        }
+        if remediation:
+            metadata["remediation"] = remediation
+
+        return EvaluationResult(
+            trap_id=trap_id,
+            trap_type=trap_type,
+            category=category,
+            trajectory=trajectory,
+            metadata=metadata,
+            compliance=compliance,
+            hallucination_steps=hallu_steps,
+            code_agent_checks=code_hallus,
+        )

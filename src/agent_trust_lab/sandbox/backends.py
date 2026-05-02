@@ -1,8 +1,7 @@
-from __future__ import annotations
-
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
+from agent_trust_lab.adapters.registry import register_adapter
 from agent_trust_lab.log import get_logger
 from agent_trust_lab.models.trajectory import (
     AgentHarness,
@@ -12,9 +11,13 @@ from agent_trust_lab.models.trajectory import (
 )
 from agent_trust_lab.sandbox.filter import filter_command
 
+if TYPE_CHECKING:
+    from agent_trust_lab.config import EvaluationConfig
+
 logger = get_logger("sandbox.backends")
 
 
+@register_adapter("docker")
 @dataclass
 class DockerSandbox(AgentHarness):
     image: str = "docker.m.daocloud.io/library/busybox:latest"
@@ -24,6 +27,16 @@ class DockerSandbox(AgentHarness):
     network_enabled: bool = False
     tmpfs_size: str = "64m"
     docker_host: str = ""
+
+    @classmethod
+    def from_config(cls, config: "EvaluationConfig") -> "DockerSandbox":
+        return cls(
+            image=config.sandbox_image or "docker.m.daocloud.io/library/busybox:latest",
+            timeout=config.timeout,
+            network_enabled=config.sandbox_network,
+            tmpfs_size=config.sandbox_tmpfs_size,
+            docker_host=config.docker_host,
+        )
 
     def run(
         self,
@@ -235,11 +248,16 @@ class DockerSandbox(AgentHarness):
         )
 
 
+@register_adapter("dry-run")
 @dataclass
 class DryRunSandbox(AgentHarness):
     log_file_path: str = "/tmp/sandbox_dryrun.log"
     intercept_network: bool = True
     intercept_filesystem: bool = True
+
+    @classmethod
+    def from_config(cls, config: "EvaluationConfig") -> "DryRunSandbox":
+        return cls()
 
     def run(
         self,

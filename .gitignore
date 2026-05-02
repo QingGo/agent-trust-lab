@@ -27,3 +27,5 @@ docs/
 .agent_memory.md
 .handoff.md
 .DS_Store
+compare_results/
+results.md

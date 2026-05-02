@@ -1,5 +1,7 @@
+from unittest.mock import patch
+
 from agent_trust_lab.adapters import CodexHarness, LangChainHarness, OpenAIFunctionHarness
-from agent_trust_lab.models.trajectory import AgentHarness
+from agent_trust_lab.models.trajectory import AgentHarness, SecureTrajectory
 
 
 class TestLangChainHarness:
@@ -103,3 +105,70 @@ class TestCodexHarness:
 
     def test_is_agent_harness_subclass(self):
         assert isinstance(CodexHarness(), AgentHarness)
+
+    def test_new_fields_exist(self):
+        harness = CodexHarness()
+        assert harness.api_key == ""
+        assert harness.base_url == ""
+        assert harness.thinking_enabled is False
+        assert harness.reasoning_effort == ""
+        assert harness.temperature == 0.0
+        assert harness.timeout == 120
+
+    def test_from_config_passes_all_fields(self):
+        from agent_trust_lab.config import EvaluationConfig
+
+        config = EvaluationConfig(
+            model="deepseek-code",
+            codebase_path="/test/project",
+            api_key="sk-test",
+            base_url="https://api.example.com",
+            thinking_enabled=True,
+            reasoning_effort="high",
+        )
+        h = CodexHarness.from_config(config)
+        assert h.model == "deepseek-code"
+        assert h.codebase_path == "/test/project"
+        assert h.api_key == "sk-test"
+        assert h.base_url == "https://api.example.com"
+        assert h.thinking_enabled is True
+        assert h.reasoning_effort == "high"
+
+    def test_run_has_code_thought_types(self):
+        harness = CodexHarness()
+        trajectory = harness.run(task="test", tools=[{"name": "shell"}])
+        step_types = [s.type for s in trajectory.steps]
+        assert "code_thought" in step_types
+
+    def test_harness_init_includes_codebase(self):
+        harness = CodexHarness(codebase_path="/home/dev/repo")
+        trajectory = harness.run(task="test", tools=[{"name": "shell"}])
+        init_step = trajectory.steps[0]
+        assert "/home/dev/repo" in init_step.content
+
+    def test_run_metadata_has_codex_adapter(self):
+        harness = CodexHarness()
+        trajectory = harness.run(task="test", tools=[{"name": "shell"}])
+        assert trajectory.metadata["adapter"] == "codex"
+
+    @patch("agent_trust_lab.adapters.harnesses.CodexHarness._run_with_llm")
+    def test_run_tries_real_llm_first(self, mock_llm):
+        from agent_trust_lab.models.trajectory import TrajectoryStep
+
+        harness = CodexHarness(model="test-model")
+        mock_llm.return_value = SecureTrajectory(
+            steps=[TrajectoryStep(type="code_thought", content="Hello")],
+            security_events=[],
+            metadata={"adapter": "codex", "model": "test-model", "stub": False},
+        )
+        trajectory = harness.run(task="test", tools=[{"name": "file_read"}])
+        assert mock_llm.called
+        assert trajectory.metadata["stub"] is False
+
+    @patch("agent_trust_lab.adapters.harnesses.CodexHarness._run_with_llm")
+    def test_run_falls_back_to_stub_on_error(self, mock_llm):
+        harness = CodexHarness()
+        mock_llm.side_effect = RuntimeError("API failure")
+        trajectory = harness.run(task="test", tools=[{"name": "shell"}])
+        assert trajectory.metadata["stub"] is True
+        assert any("API failure" in s.content for s in trajectory.steps)

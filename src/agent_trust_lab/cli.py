@@ -302,6 +302,12 @@ def run(
     skip_hallukg: bool = typer.Option(
         False, "--skip-hallukg", help="Skip hallucination evaluation (cost control)"
     ),
+    thinking: bool = typer.Option(
+        False, "--thinking", help="Enable DeepSeek thinking mode (reasoning chain)"
+    ),
+    effort: str = typer.Option(
+        "", "--effort", help="Reasoning effort: high or max (requires --thinking)"
+    ),
     verbose: int = typer.Option(
         0, "--verbose", "-v", count=True, help="Increase verbosity (-v for INFO, -vv for DEBUG)"
     ),
@@ -324,6 +330,8 @@ def run(
             "sandbox_network": sandbox_network,
             "docker_host": docker_host or "",
             "skip_hallukg": skip_hallukg,
+            "thinking_enabled": thinking,
+            "reasoning_effort": effort,
         },
         trap_file=trap_file,
         trap_id=trap_id,
@@ -609,6 +617,12 @@ def report(
         "-f",
         help="Report format: html or markdown",
     ),
+    lang: str = typer.Option(
+        "en",
+        "--lang",
+        "-l",
+        help="Report language: en or zh",
+    ),
     calibration_profile: Optional[str] = typer.Option(
         None,
         "--calibration-profile",
@@ -621,10 +635,16 @@ def report(
 ):
     """Generate an evaluation report (HTML or Markdown) from a JSON export file.
 
-    Use --calibration-profile to apply Platt-scaled calibrated scores from a
-    previously generated calibration profile (see 'calibrate' command).
+    Use --calibration-profile to apply Platt-scaled calibrated scores.
     Use --format markdown for CI/CD-friendly plain text output.
+    Use --lang zh for Chinese reports.
     """
+    lang = lang.lower()
+    if lang not in ("en", "zh", "zh-cn", "zh_cn"):
+        console.print(f"[red]Invalid language: {lang}. Use 'en' or 'zh'.[/red]")
+        raise typer.Exit(code=1)
+    if lang.startswith("zh"):
+        lang = "zh"
     from pathlib import Path
 
     from agent_trust_lab.report import ReportGenerator
@@ -666,10 +686,12 @@ def report(
             )
 
     if format_lower in ("markdown", "md"):
-        generator.generate_markdown(data, output_path=output_path, calibration=cal_profile_data)
+        generator.generate_markdown(data, output_path=output_path,
+                                    calibration=cal_profile_data, lang=lang)
         console.print(f"[green]Markdown report saved to {output_path}[/green]")
     else:
-        generator.generate(data, output_path=output_path, calibration=cal_profile_data)
+        generator.generate(data, output_path=output_path,
+                           calibration=cal_profile_data, lang=lang)
         console.print(f"[green]HTML report saved to {output_path}[/green]")
 
     if open_browser and format_lower == "html":
@@ -677,3 +699,178 @@ def report(
 
         abs_path = str(Path(output_path).resolve())
         webbrowser.open(f"file://{abs_path}")
+
+
+@app.command()
+def batch(
+    config_path: str = typer.Argument(..., help="Path to batch YAML configuration file"),
+    verbose: int = typer.Option(
+        0, "--verbose", "-v", count=True, help="Increase verbosity (-v for INFO, -vv for DEBUG)"
+    ),
+    log_file: Optional[str] = typer.Option(
+        None, "--log-file", help="Write logs to file instead of stderr"
+    ),
+):
+    """Run batch evaluation with multiple agent configs from a YAML file.
+
+    Executes each evaluation specification in sequence, exports individual
+    JSON results, auto-merges them, and generates a comparison report.
+
+    Example batch.yaml:
+
+    \b
+    evaluations:
+      - label: "flash-baseline"
+        model: "deepseek-v4-flash"
+        traps: {category: "general_agent", limit: 5}
+      - label: "flash-thinking"
+        model: "deepseek-v4-flash"
+        thinking_enabled: true
+        reasoning_effort: "high"
+        traps: {category: "general_agent", limit: 5}
+    report:
+      format: html
+      lang: en
+    """
+    from agent_trust_lab.batch import parse_batch_yaml, run_batch
+    from agent_trust_lab.log import cli_verbosity_to_level, setup_logging
+
+    setup_logging(level=cli_verbosity_to_level(verbose), log_file=log_file)
+
+    if not Path(config_path).is_file():
+        console.print(f"[red]Config file not found: {config_path}[/red]")
+        raise typer.Exit(code=1)
+
+    try:
+        batch_config = parse_batch_yaml(config_path)
+    except ValueError as e:
+        console.print(f"[red]Invalid batch config: {e}[/red]")
+        raise typer.Exit(code=1)
+
+    if not batch_config.trap_library_path:
+        batch_config.trap_library_path = str(_get_traps_data_dir())
+
+    if batch_config.report_lang.startswith("zh"):
+        batch_config.report_lang = "zh"
+
+    fmt = batch_config.report_format
+    if fmt not in ("html", "markdown", "md"):
+        console.print(f"[red]Invalid report format: {fmt}. Use 'html' or 'markdown'.[/red]")
+        raise typer.Exit(code=1)
+
+    ev_labels = ", ".join(s.label for s in batch_config.evaluations)
+    console.print(f"[bold]Batch evaluation:[/bold] {ev_labels}")
+    console.print(f"  {len(batch_config.evaluations)} config(s), "
+                  f"output dir: {batch_config.output_dir}")
+    console.print(f"  Report: {batch_config.report_format} ({batch_config.report_lang})")
+
+    merged = run_batch(batch_config)
+
+    n_traps = len(merged.get("results", []))
+    n_models = len(merged.get("configs", []))
+    console.print(f"\n[green]Batch complete.[/green] "
+                  f"{n_traps} traps x {n_models} models."
+                  f"\n  Output: {batch_config.output_dir}")
+
+
+@app.command()
+def replay(
+    trajectory_json: str = typer.Argument(..., help="Path to trajectory JSON file"),
+    trap_id: Optional[str] = typer.Option(
+        None, "--trap-id", help="Trap ID (auto-detected from metadata if omitted)"
+    ),
+    trap_type: Optional[str] = typer.Option(
+        None, "--trap-type", help="Trap type (auto-detected from metadata if omitted)"
+    ),
+    category: Optional[str] = typer.Option(
+        None, "--category", help="Category: general_agent or code_agent"
+    ),
+    model: str = typer.Option("deepseek-v4-flash", "--model", help="LLM model for re-evaluation"),
+    base_url: Optional[str] = typer.Option(
+        None, "--base-url", help="LLM API base URL"
+    ),
+    thinking: bool = typer.Option(
+        False, "--thinking", help="Enable DeepSeek thinking mode"
+    ),
+    effort: str = typer.Option(
+        "", "--effort", help="Reasoning effort: high or max (requires --thinking)"
+    ),
+    report: Optional[str] = typer.Option(
+        None, "--report", "-o", help="JSON report output path (default: trajectory_replay.json)"
+    ),
+    skip_hallukg: bool = typer.Option(
+        False, "--skip-hallukg", help="Skip hallucination evaluation"
+    ),
+    verbose: int = typer.Option(
+        0, "--verbose", "-v", count=True, help="Increase verbosity (-v for INFO, -vv for DEBUG)"
+    ),
+    log_file: Optional[str] = typer.Option(
+        None, "--log-file", help="Write logs to file instead of stderr"
+    ),
+):
+    """Replay a captured trajectory through audit and hallucination detection.
+
+    Loads a trajectory JSON file, reconstructs the SecureTrajectory, and runs
+    compliance audit + HalluKG evaluation with the specified model config.
+    Useful for re-scoring with updated detectors or different model settings.
+    """
+    import json as _json
+
+    from agent_trust_lab.config import EvaluationConfig
+    from agent_trust_lab.log import cli_verbosity_to_level, setup_logging
+    from agent_trust_lab.models.trajectory import SecureTrajectory
+    from agent_trust_lab.orchestrator import Orchestrator
+
+    setup_logging(level=cli_verbosity_to_level(verbose), log_file=log_file)
+
+    traj_path = Path(trajectory_json)
+    if not traj_path.is_file():
+        console.print(f"[red]Trajectory file not found: {trajectory_json}[/red]")
+        raise typer.Exit(code=1)
+
+    with open(traj_path, "r", encoding="utf-8") as f:
+        data = _json.load(f)
+
+    if "steps" not in data:
+        console.print("[red]Invalid trajectory JSON: missing 'steps' key.[/red]")
+        raise typer.Exit(code=1)
+
+    trajectory = SecureTrajectory.from_dict(data)
+    console.print(f"[dim]Loaded trajectory: {len(trajectory.steps)} steps, "
+                  f"{len(trajectory.security_events)} security events[/dim]")
+
+    metadata = data.get("metadata", {})
+    resolved_trap_id = trap_id or metadata.get("trap_id", "replayed")
+    resolved_trap_type = trap_type or metadata.get("trap_type", "unknown")
+    resolved_category = category or metadata.get("category", "general_agent")
+
+    config = EvaluationConfig(
+        model=model,
+        base_url=base_url or "",
+        skip_hallukg=skip_hallukg,
+        thinking_enabled=thinking,
+        reasoning_effort=effort,
+        agent_type=metadata.get("adapter", "langchain"),
+        trap_library_path=str(_get_traps_data_dir()),
+    )
+
+    orchestrator = Orchestrator(config)
+
+    result = orchestrator.replay_trajectory(
+        trajectory=trajectory,
+        trap_id=resolved_trap_id,
+        trap_type=resolved_trap_type,
+        category=resolved_category,
+        knowledge_source=metadata.get("knowledge_source", ""),
+        severity=metadata.get("severity", "medium"),
+        difficulty=metadata.get("difficulty", "medium"),
+        base_task=metadata.get("base_task", ""),
+        trap_injection=metadata.get("trap_injection", ""),
+        remediation=metadata.get("remediation"),
+    )
+
+    _display_results([result])
+
+    output_path = report or "trajectory_replay.json"
+    orchestrator.export_results([result], output_path)
+    console.print(f"\n[green]Replay report saved to {output_path}[/green]")

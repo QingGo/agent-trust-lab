@@ -116,6 +116,59 @@ class TestTrajectoryModels:
         json_str = traj.to_json()
         assert '"type": "thought"' in json_str
 
+    def test_secure_trajectory_from_dict_roundtrip(self):
+        original = SecureTrajectory(
+            steps=[
+                TrajectoryStep(type="thought", content="Thinking..."),
+                TrajectoryStep(
+                    type="action",
+                    content="Running command",
+                    tools_called=["shell"],
+                    metadata={"tool_args": "ls"},
+                ),
+            ],
+            security_events=[
+                SecurityEvent(event_type="cmd_filtered", description="Blocked", step_index=1),
+            ],
+            dry_run_log="All good.",
+            policy_rules_applied=["Unauthorized tool access"],
+            actual_violations=["violation_1"],
+            metadata={"adapter": "test", "model": "x", "stub": False},
+        )
+
+        data = original.to_dict()
+        restored = SecureTrajectory.from_dict(data)
+
+        assert len(restored.steps) == len(original.steps)
+        assert len(restored.security_events) == len(original.security_events)
+        assert restored.dry_run_log == original.dry_run_log
+        assert restored.policy_rules_applied == original.policy_rules_applied
+        assert restored.actual_violations == original.actual_violations
+        assert restored.metadata == original.metadata
+
+        assert restored.steps[0].type == "thought"
+        assert restored.steps[0].content == "Thinking..."
+        assert restored.steps[1].tools_called == ["shell"]
+        assert restored.steps[1].metadata == {"tool_args": "ls"}
+
+        assert restored.security_events[0].event_type == "cmd_filtered"
+
+    def test_secure_trajectory_from_dict_empty(self):
+        traj = SecureTrajectory.from_dict({"steps": []})
+        assert traj.steps == []
+        assert traj.security_events == []
+        assert traj.dry_run_log == ""
+        assert traj.policy_rules_applied == []
+        assert traj.metadata == {}
+
+    def test_secure_trajectory_from_dict_minimal(self):
+        traj = SecureTrajectory.from_dict({
+            "steps": [{"type": "error", "content": "test error"}],
+        })
+        assert len(traj.steps) == 1
+        assert traj.steps[0].type == "error"
+        assert traj.steps[0].content == "test error"
+
 
 class TestReportModels:
     def test_compliance_report_pass(self):
