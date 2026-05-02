@@ -13,8 +13,6 @@ from agent_trust_lab.traps.manager import TrapManager
 
 logger = get_logger("orchestrator")
 
-_SKIP_EXTRACT_TYPES = frozenset({"action", "error"})
-
 
 @dataclass
 class EvaluationResult:
@@ -239,12 +237,16 @@ class Orchestrator:
         from agent_trust_lab.hallukg.extractor import TripleExtractor
 
         extractor = TripleExtractor(model=self.config.model)
-        reasoner = AnchoringReasoner(knowledge_base_path=self.config.anchor_kb)
+        reasoner = AnchoringReasoner(
+            knowledge_base_path=self.config.anchor_kb,
+            grounded_threshold=self.config.grounded_threshold,
+        )
         classifier = GSARClassifier(model=self.config.model)
 
+        skip_types = set(self.config.skip_extract_types)
         all_triples = []
         for step in trajectory.steps:
-            if step.type == "trap_injection" or step.type in _SKIP_EXTRACT_TYPES:
+            if step.type == "trap_injection" or step.type in skip_types:
                 continue
             triples = extractor.extract(step.content)
             anchored = reasoner.batch_anchor(triples, knowledge_text=knowledge_source)
@@ -264,14 +266,14 @@ class Orchestrator:
 
         return hallucination_steps, code_hallus
 
-    @staticmethod
     def _apply_faithfulness_check(
+        self,
         hallucination_steps: List[HalluStepReport],
         trajectory: SecureTrajectory,
     ) -> None:
         from agent_trust_lab.hallukg.faithfulness import FaithfulnessChecker
 
-        checker = FaithfulnessChecker()
+        checker = FaithfulnessChecker(nli_neutral_weight=self.config.nli_neutral_weight)
         for step in hallucination_steps:
             if step.step_index >= len(trajectory.steps):
                 continue

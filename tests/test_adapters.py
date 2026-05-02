@@ -172,3 +172,210 @@ class TestCodexHarness:
         trajectory = harness.run(task="test", tools=[{"name": "shell"}])
         assert trajectory.metadata["stub"] is True
         assert any("API failure" in s.content for s in trajectory.steps)
+
+
+class TestToolWhitelist:
+    def test_langchain_unauthorized_tool_generates_event(self):
+        from unittest.mock import MagicMock, patch
+
+        harness = LangChainHarness()
+
+        mock_tc = MagicMock()
+        mock_tc.id = "call_1"
+        mock_tc.function.name = "suspicious_delete"
+        mock_tc.function.arguments = '{"path": "/tmp/x"}'
+
+        mock_choice = MagicMock()
+        mock_choice.message.content = "Let me run this tool"
+        mock_choice.message.tool_calls = [mock_tc]
+        mock_choice.finish_reason = "stop"
+
+        mock_response = MagicMock()
+        mock_response.choices = [mock_choice]
+
+        mock_client = MagicMock()
+        mock_client.chat.completions.create.return_value = mock_response
+
+        with patch("agent_trust_lab.llm.create_openai_client", return_value=mock_client):
+            with patch("agent_trust_lab.llm.get_api_key", return_value="sk-test"):
+                trajectory = harness.run(
+                    task="test",
+                    tools=[{"name": "file_read"}],
+                )
+
+        unauthorized = [
+            e for e in trajectory.security_events if e.event_type == "unauthorized_tool"
+        ]
+        assert len(unauthorized) >= 1
+        assert "suspicious_delete" in unauthorized[0].description
+
+    def test_langchain_authorized_tool_no_event(self):
+        from unittest.mock import MagicMock, patch
+
+        harness = LangChainHarness()
+
+        mock_tc = MagicMock()
+        mock_tc.id = "call_1"
+        mock_tc.function.name = "file_read"
+        mock_tc.function.arguments = '{"path": "/tmp/x"}'
+
+        mock_choice = MagicMock()
+        mock_choice.message.content = "Let me read"
+        mock_choice.message.tool_calls = [mock_tc]
+        mock_choice.finish_reason = "stop"
+
+        mock_response = MagicMock()
+        mock_response.choices = [mock_choice]
+
+        mock_client = MagicMock()
+        mock_client.chat.completions.create.return_value = mock_response
+
+        with patch("agent_trust_lab.llm.create_openai_client", return_value=mock_client):
+            with patch("agent_trust_lab.llm.get_api_key", return_value="sk-test"):
+                trajectory = harness.run(
+                    task="test",
+                    tools=[{"name": "file_read"}],
+                )
+
+        unauthorized = [
+            e for e in trajectory.security_events if e.event_type == "unauthorized_tool"
+        ]
+        assert len(unauthorized) == 0
+
+    def test_codex_unauthorized_tool_generates_event(self):
+        from unittest.mock import MagicMock, patch
+
+        harness = CodexHarness()
+
+        mock_tc = MagicMock()
+        mock_tc.id = "call_1"
+        mock_tc.function.name = "sudo_exec"  # NOT in authorized tools
+        mock_tc.function.arguments = '{"cmd": "ls"}'
+
+        mock_choice = MagicMock()
+        mock_choice.message.content = "Running"
+        mock_choice.message.tool_calls = [mock_tc]
+        mock_choice.finish_reason = "stop"
+
+        mock_response = MagicMock()
+        mock_response.choices = [mock_choice]
+
+        mock_client = MagicMock()
+        mock_client.chat.completions.create.return_value = mock_response
+
+        with patch("agent_trust_lab.llm.create_openai_client", return_value=mock_client):
+            with patch("agent_trust_lab.llm.get_api_key", return_value="sk-test"):
+                trajectory = harness.run(
+                    task="test",
+                    tools=[{"name": "code_search"}],
+                )
+
+        unauthorized = [
+            e for e in trajectory.security_events if e.event_type == "unauthorized_tool"
+        ]
+        assert len(unauthorized) >= 1
+        assert "sudo_exec" in unauthorized[0].description
+
+
+class TestToolArgumentFilter:
+    def test_langchain_blocks_dangerous_argument(self):
+        from unittest.mock import MagicMock, patch
+
+        harness = LangChainHarness()
+
+        mock_tc = MagicMock()
+        mock_tc.id = "call_1"
+        mock_tc.function.name = "shell"
+        mock_tc.function.arguments = "sudo rm -rf /"
+
+        mock_choice = MagicMock()
+        mock_choice.message.content = "Executing"
+        mock_choice.message.tool_calls = [mock_tc]
+        mock_choice.finish_reason = "stop"
+
+        mock_response = MagicMock()
+        mock_response.choices = [mock_choice]
+
+        mock_client = MagicMock()
+        mock_client.chat.completions.create.return_value = mock_response
+
+        with patch("agent_trust_lab.llm.create_openai_client", return_value=mock_client):
+            with patch("agent_trust_lab.llm.get_api_key", return_value="sk-test"):
+                trajectory = harness.run(
+                    task="test",
+                    tools=[{"name": "shell"}],
+                )
+
+        arg_filtered = [
+            e for e in trajectory.security_events
+            if e.event_type == "cmd_filtered" and "Tool argument blocked" in e.description
+        ]
+        assert len(arg_filtered) >= 1
+
+    def test_langchain_safe_argument_no_event(self):
+        from unittest.mock import MagicMock, patch
+
+        harness = LangChainHarness()
+
+        mock_tc = MagicMock()
+        mock_tc.id = "call_1"
+        mock_tc.function.name = "shell"
+        mock_tc.function.arguments = '{"cmd": "ls -la"}'
+
+        mock_choice = MagicMock()
+        mock_choice.message.content = "Listing"
+        mock_choice.message.tool_calls = [mock_tc]
+        mock_choice.finish_reason = "stop"
+
+        mock_response = MagicMock()
+        mock_response.choices = [mock_choice]
+
+        mock_client = MagicMock()
+        mock_client.chat.completions.create.return_value = mock_response
+
+        with patch("agent_trust_lab.llm.create_openai_client", return_value=mock_client):
+            with patch("agent_trust_lab.llm.get_api_key", return_value="sk-test"):
+                trajectory = harness.run(
+                    task="test",
+                    tools=[{"name": "shell"}],
+                )
+
+        arg_filtered = [
+            e for e in trajectory.security_events
+            if e.event_type == "cmd_filtered" and "Tool argument blocked" in e.description
+        ]
+        assert len(arg_filtered) == 0
+
+    def test_codex_blocks_dangerous_argument(self):
+        from unittest.mock import MagicMock, patch
+
+        harness = CodexHarness()
+
+        mock_tc = MagicMock()
+        mock_tc.id = "call_1"
+        mock_tc.function.name = "shell"
+        mock_tc.function.arguments = "eval malicious_code"
+
+        mock_choice = MagicMock()
+        mock_choice.message.content = "Running code"
+        mock_choice.message.tool_calls = [mock_tc]
+        mock_choice.finish_reason = "stop"
+
+        mock_response = MagicMock()
+        mock_response.choices = [mock_choice]
+
+        mock_client = MagicMock()
+        mock_client.chat.completions.create.return_value = mock_response
+
+        with patch("agent_trust_lab.llm.create_openai_client", return_value=mock_client):
+            with patch("agent_trust_lab.llm.get_api_key", return_value="sk-test"):
+                trajectory = harness.run(
+                    task="test",
+                    tools=[{"name": "shell"}],
+                )
+
+        arg_filtered = [
+            e for e in trajectory.security_events
+            if e.event_type == "cmd_filtered" and "Tool argument blocked" in e.description
+        ]
+        assert len(arg_filtered) >= 1

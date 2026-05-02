@@ -245,6 +245,29 @@ class TestAnchoringReasoner:
         assert results[0]["confidence"] == 0.99
         assert results[0]["label"] == "Grounded"
 
+    def test_custom_grounded_threshold_setting(self):
+        reasoner = AnchoringReasoner(grounded_threshold=0.7)
+        assert reasoner.grounded_threshold == 0.7
+
+    def test_custom_grounded_threshold_high_value_ungrounds(self):
+        reasoner = AnchoringReasoner(grounded_threshold=0.95)
+        triples = [
+            {"subject": "email_send", "predicate": "accepts", "object": "cc", "confidence": 0.9},
+        ]
+        knowledge = "email_send accepts: to, subject, body, cc."
+        results = reasoner.batch_anchor(triples, knowledge_text=knowledge)
+        assert results[0]["label"] == "Ungrounded"
+
+    def test_custom_grounded_threshold_low_value_grounds(self):
+        reasoner = AnchoringReasoner(grounded_threshold=0.1)
+        triples = [
+            {"subject": "unknown_tool", "predicate": "does", "object": "nothing",
+             "confidence": 0.5},
+        ]
+        knowledge = "email_send accepts: to, subject, body."
+        results = reasoner.batch_anchor(triples, knowledge_text=knowledge)
+        assert results[0]["label"] == "Grounded"
+
 
 class TestAnchoringReasonerSemantic:
     """Tests for the ONNX semantic embedding path."""
@@ -562,6 +585,14 @@ class TestFaithfulnessChecker:
             ["email_send accepts: to, subject, body, cc. cc is an optional field."],
         )
         assert score > 0.2
+
+    def test_custom_nli_neutral_weight_setting(self):
+        checker = FaithfulnessChecker(nli_neutral_weight=0.8)
+        assert checker.nli_neutral_weight == 0.8
+
+    def test_default_nli_neutral_weight(self):
+        checker = FaithfulnessChecker()
+        assert checker.nli_neutral_weight == 0.5
 
 
 class TestCodeHalluChecker:

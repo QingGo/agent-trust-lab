@@ -87,9 +87,11 @@ class AnchoringReasoner:
         self,
         knowledge_base_path: str = "./kb/",
         code_index_path: Optional[str] = None,
+        grounded_threshold: float = 0.3,
     ):
         self.knowledge_base_path = knowledge_base_path
         self.code_index_path = code_index_path
+        self.grounded_threshold = grounded_threshold
         self._embedder = EmbeddingEngine()
 
     def anchor(
@@ -200,7 +202,7 @@ class AnchoringReasoner:
         if best_score < 0:
             return None
 
-        grounded = best_score >= _GROUNDED_THRESHOLD
+        grounded = best_score >= self.grounded_threshold
         label = "Grounded" if grounded else "Ungrounded"
         evidence = (
             [f"Semantic match ({best_score:.3f}) with: '{best_sentence}'"]
@@ -209,8 +211,8 @@ class AnchoringReasoner:
         )
         return best_score, evidence, label
 
-    @staticmethod
     def _compute_anchor_token_overlap(
+        self,
         subject: str, obj: str, knowledge_text: str
     ) -> tuple[float, List[str], str]:
         if not knowledge_text:
@@ -224,15 +226,19 @@ class AnchoringReasoner:
             matches.append(obj)
 
         if matches:
+            score = 0.92
+            label = "Grounded" if score >= self.grounded_threshold else "Ungrounded"
             return (
-                0.92,
+                score,
                 [f"Token match for '{', '.join(matches)}' in knowledge source"],
-                "Grounded",
+                label,
             )
+        score = 0.15
+        label = "Grounded" if score >= self.grounded_threshold else "Ungrounded"
         return (
-            0.15,
+            score,
             [f"No token match for '{subject}' or '{obj}' in knowledge source"],
-            "Ungrounded",
+            label,
         )
 
     @staticmethod

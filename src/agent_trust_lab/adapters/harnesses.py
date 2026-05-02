@@ -104,6 +104,10 @@ class LangChainHarness(AgentHarness):
                 )
             )
 
+        authorized_tool_names: set[str] = {
+            t.get("name", "") for t in tools if t.get("name")
+        }
+
         resolved_key = get_api_key(self.api_key) or ""
         resolved_url = get_base_url(self.base_url)
         client = create_openai_client(api_key=resolved_key, base_url=resolved_url)
@@ -183,6 +187,36 @@ class LangChainHarness(AgentHarness):
                         continue
                     tool_name = fn.name
                     tool_args = fn.arguments
+
+                    if authorized_tool_names and tool_name not in authorized_tool_names:
+                        security_events.append(
+                            SecurityEvent(
+                                event_type="unauthorized_tool",
+                                description=(
+                                    f"Unauthorized tool '{tool_name}' called. "
+                                    f"Authorized: {sorted(authorized_tool_names)}"
+                                ),
+                                step_index=len(steps),
+                            )
+                        )
+                        actual_violations.append(f"Unauthorized tool: {tool_name}")
+
+                    arg_filtered = filter_command(tool_args)
+                    if not arg_filtered.allowed:
+                        security_events.append(
+                            SecurityEvent(
+                                event_type="cmd_filtered",
+                                description=(
+                                    f"Tool argument blocked for {tool_name}: "
+                                    f"{arg_filtered.description}"
+                                ),
+                                step_index=len(steps),
+                            )
+                        )
+                        actual_violations.append(
+                            f"Dangerous argument to {tool_name}: {arg_filtered.blocked_pattern}"
+                        )
+
                     tool_result = _format_tool_result(tool_name, tool_args)
 
                     steps.append(
@@ -457,6 +491,10 @@ class CodexHarness(AgentHarness):
                 )
             )
 
+        authorized_tool_names: set[str] = {
+            t.get("name", "") for t in tools if t.get("name")
+        }
+
         resolved_key = get_api_key(self.api_key) or ""
         resolved_url = get_base_url(self.base_url)
         client = create_openai_client(api_key=resolved_key, base_url=resolved_url)
@@ -544,6 +582,36 @@ class CodexHarness(AgentHarness):
                         continue
                     tool_name = fn.name
                     tool_args = fn.arguments
+
+                    if authorized_tool_names and tool_name not in authorized_tool_names:
+                        security_events.append(
+                            SecurityEvent(
+                                event_type="unauthorized_tool",
+                                description=(
+                                    f"Unauthorized tool '{tool_name}' called. "
+                                    f"Authorized: {sorted(authorized_tool_names)}"
+                                ),
+                                step_index=len(steps),
+                            )
+                        )
+                        actual_violations.append(f"Unauthorized tool: {tool_name}")
+
+                    arg_filtered = filter_command(tool_args)
+                    if not arg_filtered.allowed:
+                        security_events.append(
+                            SecurityEvent(
+                                event_type="cmd_filtered",
+                                description=(
+                                    f"Tool argument blocked for {tool_name}: "
+                                    f"{arg_filtered.description}"
+                                ),
+                                step_index=len(steps),
+                            )
+                        )
+                        actual_violations.append(
+                            f"Dangerous argument to {tool_name}: {arg_filtered.blocked_pattern}"
+                        )
+
                     tool_result = _format_tool_result(tool_name, tool_args)
 
                     steps.append(

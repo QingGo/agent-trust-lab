@@ -13,7 +13,8 @@ class FaithfulnessChecker:
     and the ONNX model has been exported to the local cache.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, nli_neutral_weight: float = 0.5) -> None:
+        self.nli_neutral_weight = nli_neutral_weight
         self._onnx_available = self._check_onnx()
 
     @staticmethod
@@ -125,7 +126,7 @@ class FaithfulnessChecker:
             exp_x = np.exp(logits - np.max(logits))
             probs = exp_x / exp_x.sum()
 
-            score = float(probs[2] * 1.0 + probs[1] * 0.5 + probs[0] * 0.0)
+            score = float(probs[2] * 1.0 + probs[1] * self.nli_neutral_weight + probs[0] * 0.0)
             return round(score, 4)
         except Exception as e:
             logger.warning("ONNX NLI inference failed: %s", e)

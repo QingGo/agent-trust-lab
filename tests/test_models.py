@@ -228,3 +228,43 @@ class TestEvaluationConfig:
         assert config.agent_type == "codex"
         assert config.codebase_path == "/path/to/code"
         assert config.dry_run is True
+
+    def test_skip_extract_types_defaults(self):
+        config = EvaluationConfig()
+        assert config.skip_extract_types == ["action", "error"]
+
+    def test_skip_extract_types_custom(self):
+        config = EvaluationConfig(skip_extract_types=["action"])
+        assert config.skip_extract_types == ["action"]
+
+    def test_grounded_threshold_default(self):
+        config = EvaluationConfig()
+        assert config.grounded_threshold == 0.3
+
+    def test_grounded_threshold_custom(self):
+        config = EvaluationConfig(grounded_threshold=0.7)
+        assert config.grounded_threshold == 0.7
+
+    def test_grounded_threshold_below_zero_raises(self):
+        with pytest.raises(ValueError, match="grounded_threshold"):
+            EvaluationConfig(grounded_threshold=-0.1)
+
+    def test_grounded_threshold_above_one_raises(self):
+        with pytest.raises(ValueError, match="grounded_threshold"):
+            EvaluationConfig(grounded_threshold=1.5)
+
+    def test_nli_neutral_weight_default(self):
+        config = EvaluationConfig()
+        assert config.nli_neutral_weight == 0.5
+
+    def test_nli_neutral_weight_custom(self):
+        config = EvaluationConfig(nli_neutral_weight=0.8)
+        assert config.nli_neutral_weight == 0.8
+
+    def test_nli_neutral_weight_below_zero_raises(self):
+        with pytest.raises(ValueError, match="nli_neutral_weight"):
+            EvaluationConfig(nli_neutral_weight=-0.1)
+
+    def test_nli_neutral_weight_above_one_raises(self):
+        with pytest.raises(ValueError, match="nli_neutral_weight"):
+            EvaluationConfig(nli_neutral_weight=1.5)

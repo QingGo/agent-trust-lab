@@ -28,6 +28,9 @@ class EvaluationConfig:
     dry_run: bool = False
     skip_hallukg: bool = False
     timeout: int = 120
+    skip_extract_types: List[str] = field(default_factory=lambda: ["action", "error"])
+    grounded_threshold: float = 0.3
+    nli_neutral_weight: float = 0.5
 
     def __post_init__(self) -> None:
         if self.max_steps < 1:
@@ -36,3 +39,11 @@ class EvaluationConfig:
             raise ValueError(f"parallel must be >= 1, got {self.parallel}")
         if self.timeout < 1:
             raise ValueError(f"timeout must be >= 1, got {self.timeout}")
+        if not 0.0 <= self.grounded_threshold <= 1.0:
+            raise ValueError(
+                f"grounded_threshold must be in [0.0, 1.0], got {self.grounded_threshold}"
+            )
+        if not 0.0 <= self.nli_neutral_weight <= 1.0:
+            raise ValueError(
+                f"nli_neutral_weight must be in [0.0, 1.0], got {self.nli_neutral_weight}"
+            )
