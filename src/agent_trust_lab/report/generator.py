@@ -225,6 +225,20 @@ TEMPLATE = """<!DOCTYPE html>
     </div>
     {% endif %}
 
+    {% if trap.remediation %}
+    <div class="detail-section" style="background:#f0fdf4;border-radius:8px;padding:16px;">
+      <h4>Remediation</h4>
+      <table>
+        <tr><th style="width:80px;">Problem</th>
+          <td>{{ trap.remediation.problem }}</td></tr>
+        <tr><th>Cause</th>
+          <td>{{ trap.remediation.cause }}</td></tr>
+        <tr><th>Fix</th>
+          <td style="color:#38a169;font-weight:600;">{{ trap.remediation.fix }}</td></tr>
+      </table>
+    </div>
+    {% endif %}
+
   </div>
 </div>
 {% endfor %}
@@ -309,6 +323,9 @@ class ReportGenerator:
                 trap["hallucination"] = r["hallucination"]
             if "code_hallu" in r and r["code_hallu"] is not None:
                 trap["code_hallu"] = r["code_hallu"]
+            remediation = r.get("metadata", {}).get("remediation")
+            if remediation:
+                trap["remediation"] = remediation
             enriched.append(trap)
         return enriched
 

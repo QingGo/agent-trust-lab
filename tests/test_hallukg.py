@@ -100,6 +100,15 @@ class TestTripleExtractor:
 
 
 class TestAnchoringReasoner:
+    @pytest.fixture(autouse=True)
+    def _disable_onnx_embedding(self):
+        """Force token overlap fallback by making EmbeddingEngine unavailable."""
+        with patch(
+            "agent_trust_lab.hallukg.anchoring.EmbeddingEngine.is_available",
+            new_callable=lambda: property(lambda self: False),
+        ):
+            yield
+
     def test_default_construction(self):
         reasoner = AnchoringReasoner()
         assert reasoner.knowledge_base_path == "./kb/"
@@ -237,6 +246,120 @@ class TestAnchoringReasoner:
         assert results[0]["label"] == "Grounded"
 
 
+class TestAnchoringReasonerSemantic:
+    """Tests for the ONNX semantic embedding path."""
+
+    @pytest.fixture(autouse=True)
+    def _mock_embedding_engine(self):
+        """Mock EmbeddingEngine so we control embeddings deterministically."""
+        with patch("agent_trust_lab.hallukg.anchoring.EmbeddingEngine") as mock_cls:
+            mock_instance = mock_cls.return_value
+            mock_instance.is_available = True
+            yield mock_instance
+
+    def _setup_embeddings(self, mock_instance, embeddings: dict):
+        """Configure mock encode() to return specific embedding vectors."""
+        def encode_side_effect(text):
+            import numpy as np
+            for key, vec in embeddings.items():
+                if key in text:
+                    return np.array(vec, dtype=np.float64)
+            return np.array([0.0] * 4, dtype=np.float64)
+        mock_instance.encode.side_effect = encode_side_effect
+
+    def test_semantic_anchor_matching(self, _mock_embedding_engine):
+        reasoner = AnchoringReasoner()
+        embeddings = {
+            "email_send": [1.0, 0.0, 0.0, 0.0],
+        }
+        self._setup_embeddings(_mock_embedding_engine, embeddings)
+
+        triple = {"subject": "email_send", "predicate": "accepts", "object": "cc"}
+        knowledge = "email_send tool handles mailing. database_query tool searches."
+        result = reasoner.anchor(triple, knowledge_text=knowledge)
+        assert result["label"] == "Grounded"
+        assert result["anchor_score"] > 0.5
+        assert "Semantic match" in result["evidence"][0]
+
+    def test_semantic_anchor_no_match(self, _mock_embedding_engine):
+        reasoner = AnchoringReasoner()
+        embeddings = {
+            "email_send": [1.0, 0.0, 0.0, 0.0],
+            "unknown_tool": [0.0, 1.0, 0.0, 0.0],
+        }
+        self._setup_embeddings(_mock_embedding_engine, embeddings)
+
+        triple = {"subject": "unknown_tool", "predicate": "does", "object": "nothing"}
+        knowledge = "email_send tool handles mailing."
+        result = reasoner.anchor(triple, knowledge_text=knowledge)
+        assert result["label"] == "Ungrounded"
+        assert result["anchor_score"] < 0.3
+
+    def test_semantic_score_is_continuous(self, _mock_embedding_engine):
+        reasoner = AnchoringReasoner()
+        embeddings = {
+            "email_send": [1.0, 0.0, 0.0, 0.0],
+        }
+        self._setup_embeddings(_mock_embedding_engine, embeddings)
+
+        triple = {"subject": "email_send", "predicate": "accepts", "object": "cc"}
+        knowledge = "email_send tool handles mailing."
+        result = reasoner.anchor(triple, knowledge_text=knowledge)
+        assert isinstance(result["anchor_score"], float)
+        assert 0.0 <= result["anchor_score"] <= 1.0
+
+    def test_semantic_batch_anchor(self, _mock_embedding_engine):
+        reasoner = AnchoringReasoner()
+        embeddings = {
+            "email_send": [1.0, 0.0, 0.0, 0.0],
+            "unknown_tool": [0.0, 1.0, 0.0, 0.0],
+        }
+        self._setup_embeddings(_mock_embedding_engine, embeddings)
+
+        triples = [
+            {"subject": "email_send", "predicate": "accepts", "object": "cc"},
+            {"subject": "unknown_tool", "predicate": "does", "object": "nothing"},
+        ]
+        knowledge = "email_send tool handles mailing. database_query tool searches."
+        results = reasoner.batch_anchor(triples, knowledge_text=knowledge)
+        assert len(results) == 2
+        assert results[0]["label"] == "Grounded"
+        assert results[1]["label"] == "Ungrounded"
+
+    def test_semantic_preserves_triple_fields(self, _mock_embedding_engine):
+        reasoner = AnchoringReasoner()
+        embeddings = {
+            "email_send": [1.0, 0.0, 0.0, 0.0],
+        }
+        self._setup_embeddings(_mock_embedding_engine, embeddings)
+
+        triple = {
+            "subject": "email_send",
+            "predicate": "accepts",
+            "object": "cc",
+            "confidence": 0.99,
+        }
+        knowledge = "email_send tool handles mailing."
+        result = reasoner.anchor(triple, knowledge_text=knowledge)
+        assert result["subject"] == "email_send"
+        assert result["predicate"] == "accepts"
+        assert result["object"] == "cc"
+        assert result["confidence"] == 0.99
+
+    def test_semantic_evidence_references_best_match(self, _mock_embedding_engine):
+        reasoner = AnchoringReasoner()
+        embeddings = {
+            "email_send": [1.0, 0.0, 0.0, 0.0],
+        }
+        self._setup_embeddings(_mock_embedding_engine, embeddings)
+
+        triple = {"subject": "email_send", "predicate": "accepts", "object": "cc"}
+        knowledge = "email_send tool handles mailing with to, subject, body, cc."
+        result = reasoner.anchor(triple, knowledge_text=knowledge)
+        assert len(result["evidence"]) > 0
+        assert "email_send" in result["evidence"][0]
+
+
 class TestGSARClassifier:
     @pytest.fixture(autouse=True)
     def _stub_mode(self):
@@ -353,15 +476,48 @@ class TestGSARClassifier:
 
 
 class TestFaithfulnessChecker:
-    def test_check_returns_constant(self):
+    def test_check_returns_float_between_0_and_1(self):
         checker = FaithfulnessChecker()
-        score = checker.check(["statement"], ["evidence"])
-        assert score == 0.95
+        score = checker.check(["the agent called the database_query tool"], ["database_query"])
+        assert isinstance(score, float)
+        assert 0.0 <= score <= 1.0
 
-    def test_check_with_multiple_statements(self):
+    def test_check_identical_texts(self):
         checker = FaithfulnessChecker()
-        score = checker.check(["s1", "s2", "s3"], ["e1", "e2"])
-        assert score == 0.95
+        text = "the agent executed the file_read tool with the correct parameters"
+        score = checker.check([text], [text])
+        assert score == 1.0
+
+    def test_check_different_texts(self):
+        checker = FaithfulnessChecker()
+        score = checker.check(
+            ["database_query accepts limit and format parameters"],
+            ["file_write accepts path and content parameters"],
+        )
+        assert score < 1.0
+
+    def test_check_empty_statements(self):
+        checker = FaithfulnessChecker()
+        score = checker.check([""], ["evidence"])
+        assert score == 0.5
+
+    def test_check_empty_evidence(self):
+        checker = FaithfulnessChecker()
+        score = checker.check(["statement"], [""])
+        assert score == 0.5
+
+    def test_check_both_empty(self):
+        checker = FaithfulnessChecker()
+        score = checker.check([], [])
+        assert score == 0.5
+
+    def test_check_similar_texts(self):
+        checker = FaithfulnessChecker()
+        score = checker.check(
+            ["the agent used database_query with limit parameter"],
+            ["database_query tool accepts limit parameter for queries"],
+        )
+        assert score > 0.0
 
     def test_batch_check_returns_correct_length(self):
         checker = FaithfulnessChecker()
@@ -370,12 +526,42 @@ class TestFaithfulnessChecker:
             [["e1"], ["e2"], ["e3"]],
         )
         assert len(scores) == 3
-        assert scores == [0.95, 0.95, 0.95]
+        for s in scores:
+            assert isinstance(s, float)
+            assert 0.0 <= s <= 1.0
 
     def test_batch_check_empty(self):
         checker = FaithfulnessChecker()
         scores = checker.batch_check([], [])
         assert scores == []
+
+    def test_batch_check_mixed_similarity(self):
+        checker = FaithfulnessChecker()
+        scores = checker.batch_check(
+            [["identical"], ["different"], ["also different"]],
+            [["identical"], ["other"], ["something else"]],
+        )
+        assert len(scores) == 3
+        assert scores[0] == 1.0
+        assert scores[1] < 1.0
+        assert scores[2] < 1.0
+
+    def test_batch_check_with_empty_entries(self):
+        checker = FaithfulnessChecker()
+        scores = checker.batch_check(
+            [["text"], [""], ["more text"]],
+            [["evidence"], ["ev"], ["evidence"]],
+        )
+        assert len(scores) == 3
+        assert scores[1] == 0.5
+
+    def test_check_with_realistic_evidence(self):
+        checker = FaithfulnessChecker()
+        score = checker.check(
+            ["The email_send function accepts to, subject, body, and cc parameters."],
+            ["email_send accepts: to, subject, body, cc. cc is an optional field."],
+        )
+        assert score > 0.2
 
 
 class TestCodeHalluChecker:

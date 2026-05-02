@@ -295,6 +295,58 @@ class TestReportGenerator:
         assert "API connection timeout" in html
         assert "Error" in html
 
+    def test_generate_with_remediation(self):
+        generator = ReportGenerator()
+        data = {
+            "config": {"model": "test", "agent_type": "langchain", "sandbox": "docker"},
+            "results": [
+                {
+                    "trap_id": "test_remed",
+                    "trap_type": "parameter_hallucination",
+                    "category": "general_agent",
+                    "steps_count": 4,
+                    "mutated": False,
+                    "security_events": 0,
+                    "metadata": {
+                        "severity": "medium",
+                        "difficulty": "easy",
+                        "remediation": {
+                            "problem": "Agent used fake parameter",
+                            "cause": "Tool description was misleading",
+                            "fix": "Validate parameters against schema",
+                        },
+                    },
+                }
+            ],
+        }
+        html = generator.generate(data)
+        assert "Remediation" in html
+        assert "Agent used fake parameter" in html
+        assert "Tool description was misleading" in html
+        assert "Validate parameters against schema" in html
+        assert "Problem" in html
+        assert "Cause" in html
+        assert "Fix" in html
+
+    def test_generate_without_remediation(self):
+        generator = ReportGenerator()
+        data = {
+            "config": {"model": "test", "agent_type": "langchain", "sandbox": "docker"},
+            "results": [
+                {
+                    "trap_id": "test_no_remed",
+                    "trap_type": "test",
+                    "category": "general_agent",
+                    "steps_count": 2,
+                    "mutated": False,
+                    "security_events": 0,
+                    "metadata": {"severity": "medium", "difficulty": "easy"},
+                }
+            ],
+        }
+        html = generator.generate(data)
+        assert "Remediation" not in html
+
     def test_self_contained_no_external_refs(self):
         generator = ReportGenerator()
         data = {

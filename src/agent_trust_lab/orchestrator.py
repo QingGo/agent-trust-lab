@@ -1,5 +1,6 @@
 import json
 import os
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
@@ -11,6 +12,8 @@ from agent_trust_lab.models.trap import EnhancedTrapDef
 from agent_trust_lab.traps.manager import TrapManager
 
 logger = get_logger("orchestrator")
+
+_SKIP_EXTRACT_TYPES = frozenset({"action", "error"})
 
 
 @dataclass
@@ -200,6 +203,17 @@ class Orchestrator:
                 knowledge_source=trap.knowledge_source or "",
             )
 
+        metadata: Dict[str, Any] = {
+            "severity": trap.severity,
+            "difficulty": trap.difficulty,
+        }
+        if trap.remediation is not None:
+            metadata["remediation"] = {
+                "problem": trap.remediation.problem,
+                "cause": trap.remediation.cause,
+                "fix": trap.remediation.fix,
+            }
+
         return EvaluationResult(
             trap_id=trap.trap_id,
             trap_type=trap.trap_type,
@@ -207,10 +221,7 @@ class Orchestrator:
             trajectory=trajectory,
             mutated=mutate,
             mutation_seed=mutation_seed if mutate else None,
-            metadata={
-                "severity": trap.severity,
-                "difficulty": trap.difficulty,
-            },
+            metadata=metadata,
             compliance=compliance,
             hallucination_steps=hallu_steps,
             code_agent_checks=code_hallus,
@@ -243,13 +254,14 @@ class Orchestrator:
 
         all_triples = []
         for step in trajectory.steps:
-            if step.type == "trap_injection":
+            if step.type == "trap_injection" or step.type in _SKIP_EXTRACT_TYPES:
                 continue
             triples = extractor.extract(step.content)
             anchored = reasoner.batch_anchor(triples, knowledge_text=knowledge_source)
             all_triples.extend(anchored)
 
         hallucination_steps = classifier.classify(trajectory.steps, all_triples)
+        self._apply_faithfulness_check(hallucination_steps, trajectory)
         code_hallus: List[CodeHalluReport] = []
 
         if is_code_agent:
@@ -262,6 +274,32 @@ class Orchestrator:
 
         return hallucination_steps, code_hallus
 
+    @staticmethod
+    def _apply_faithfulness_check(
+        hallucination_steps: List[HalluStepReport],
+        trajectory: SecureTrajectory,
+    ) -> None:
+        from agent_trust_lab.hallukg.faithfulness import FaithfulnessChecker
+
+        checker = FaithfulnessChecker()
+        for step in hallucination_steps:
+            if step.step_index >= len(trajectory.steps):
+                continue
+            traj_step = trajectory.steps[step.step_index]
+            if traj_step.type in ("trap_injection", "action", "error"):
+                continue
+            evidence = step.evidence if step.evidence else ["no evidence"]
+            gsar_score = step.faithfulness_score
+            nli_score = checker.check([traj_step.content], evidence)
+            step.faithfulness_score = round((gsar_score + nli_score) / 2.0, 4)
+            logger.debug(
+                "Faithfulness cross-check step %d: gsar=%.3f nli=%.3f blended=%.3f",
+                step.step_index,
+                gsar_score,
+                nli_score,
+                step.faithfulness_score,
+            )
+
     def run_traps(
         self,
         trap_ids: Optional[List[str]] = None,
@@ -271,7 +309,8 @@ class Orchestrator:
         mutation_seed: Optional[int] = None,
         limit: Optional[int] = None,
     ) -> List[EvaluationResult]:
-        traps = self.trap_manager.load_traps(
+        trap_manager = self.trap_manager
+        traps = trap_manager.load_traps(
             trap_ids=trap_ids,
             category=category,
             difficulty=difficulty,
@@ -280,6 +319,11 @@ class Orchestrator:
 
         if limit:
             traps = traps[:limit]
+
+        if self.config.parallel > 1 and len(traps) > 1:
+            return self._run_traps_parallel(
+                traps, mutate=mutate, mutation_seed=mutation_seed
+            )
 
         harness = self.resolve_harness()
         results: List[EvaluationResult] = []
@@ -291,6 +335,54 @@ class Orchestrator:
             results.append(result)
 
         return results
+
+    def _run_traps_parallel(
+        self,
+        traps: List[EnhancedTrapDef],
+        mutate: bool = False,
+        mutation_seed: Optional[int] = None,
+    ) -> List[EvaluationResult]:
+        results: List[Optional[EvaluationResult]] = [None] * len(traps)
+
+        with ThreadPoolExecutor(max_workers=self.config.parallel) as executor:
+            futures = {}
+            for idx, trap in enumerate(traps):
+                harness = self.resolve_harness()
+                future = executor.submit(
+                    self.run_single, trap,
+                    harness=harness, mutate=mutate, mutation_seed=mutation_seed,
+                )
+                futures[future] = idx
+
+            for future in as_completed(futures):
+                idx = futures[future]
+                try:
+                    results[idx] = future.result()
+                except Exception as e:
+                    logger.error("Trap %s failed in parallel run: %s", traps[idx].trap_id, e)
+                    from agent_trust_lab.models.trajectory import TrajectoryStep
+
+                    results[idx] = EvaluationResult(
+                        trap_id=traps[idx].trap_id,
+                        trap_type=traps[idx].trap_type,
+                        category=traps[idx].category,
+                        trajectory=SecureTrajectory(
+                            steps=[
+                                TrajectoryStep(
+                                    type="error",
+                                    content=f"Parallel execution failed: {e}",
+                                    metadata={"trap_id": traps[idx].trap_id},
+                                )
+                            ],
+                            security_events=[],
+                            policy_rules_applied=[],
+                            actual_violations=[str(e)],
+                            metadata={"error": str(e)},
+                        ),
+                        error=str(e),
+                    )
+
+        return [r for r in results if r is not None]
 
     def export_results(self, results: List[EvaluationResult], output_path: str) -> None:
         os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
