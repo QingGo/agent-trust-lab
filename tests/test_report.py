@@ -358,3 +358,198 @@ class TestReportGenerator:
         assert 'src="http' not in html
         assert "<style>" in html
         assert "<script>" in html
+
+
+class TestMarkdownReport:
+    def test_generate_markdown_basic(self):
+        generator = ReportGenerator()
+        data = {
+            "config": {"model": "test-model", "agent_type": "langchain", "sandbox": "docker"},
+            "results": [
+                {
+                    "trap_id": "test_01",
+                    "trap_type": "parameter_hallucination",
+                    "category": "general_agent",
+                    "steps_count": 5,
+                    "mutated": False,
+                    "security_events": 0,
+                    "metadata": {"severity": "medium", "difficulty": "easy"},
+                }
+            ],
+        }
+        md = generator.generate_markdown(data)
+        assert "# Agent Trust Evaluation Report" in md
+        assert "test_01" in md
+        assert "test-model" in md
+        assert "## Summary" in md
+
+    def test_generate_markdown_with_compliance(self):
+        generator = ReportGenerator()
+        data = {
+            "config": {"model": "test", "agent_type": "langchain", "sandbox": "docker"},
+            "results": [
+                {
+                    "trap_id": "t1",
+                    "metadata": {"severity": "high"},
+                    "compliance": {
+                        "overall": "fail",
+                        "dimensions": {"tool_authorization": "fail"},
+                        "critical_count": 1,
+                        "high_count": 0,
+                    },
+                }
+            ],
+        }
+        md = generator.generate_markdown(data)
+        assert "### Compliance" in md
+        assert "Overall:** fail" in md
+        assert "tool_authorization" in md
+
+    def test_generate_markdown_with_hallucination(self):
+        generator = ReportGenerator()
+        data = {
+            "config": {"model": "test", "agent_type": "langchain", "sandbox": "docker"},
+            "results": [
+                {
+                    "trap_id": "t1",
+                    "metadata": {"severity": "medium"},
+                    "hallucination": {
+                        "step_count": 1,
+                        "steps": [{"step_index": 0, "gsar_label": "Grounded",
+                                   "g_score": 0.8, "u_score": 0.1, "c_score": 0.05,
+                                   "faithfulness_score": 0.9}],
+                    },
+                }
+            ],
+        }
+        md = generator.generate_markdown(data)
+        assert "### Hallucination Analysis" in md
+        assert "Grounded" in md
+
+    def test_generate_markdown_with_remediation(self):
+        generator = ReportGenerator()
+        data = {
+            "config": {"model": "test", "agent_type": "langchain", "sandbox": "docker"},
+            "results": [
+                {
+                    "trap_id": "t1",
+                    "metadata": {"severity": "medium", "remediation": {
+                        "problem": "Test problem",
+                        "cause": "Test cause",
+                        "fix": "Test fix",
+                    }},
+                }
+            ],
+        }
+        md = generator.generate_markdown(data)
+        assert "### Remediation" in md
+        assert "Test problem" in md
+        assert "Test fix" in md
+
+    def test_generate_markdown_benign_refusal_warning(self):
+        generator = ReportGenerator()
+        data = {
+            "config": {"model": "test", "agent_type": "langchain", "sandbox": "docker"},
+            "results": [
+                {
+                    "trap_id": "t1",
+                    "metadata": {"severity": "medium"},
+                    "compliance": {"overall": "warn", "dimensions": {},
+                                   "critical_count": 0, "high_count": 1,
+                                   "benign_refusal_rate": 0.25},
+                }
+            ],
+        }
+        md = generator.generate_markdown(data)
+        assert "benign refusal" in md.lower()
+
+    def test_generate_markdown_no_warning_below_threshold(self):
+        generator = ReportGenerator()
+        data = {
+            "config": {"model": "test", "agent_type": "langchain", "sandbox": "docker"},
+            "results": [
+                {
+                    "trap_id": "t1",
+                    "metadata": {"severity": "medium"},
+                    "compliance": {"overall": "pass", "dimensions": {},
+                                   "critical_count": 0, "high_count": 0,
+                                   "benign_refusal_rate": 0.05},
+                }
+            ],
+        }
+        md = generator.generate_markdown(data)
+        assert "benign refusal" not in md.lower()
+
+    def test_generate_markdown_to_file(self):
+        generator = ReportGenerator()
+        data = {
+            "config": {"model": "test", "agent_type": "langchain", "sandbox": "docker"},
+            "results": [],
+        }
+        with tempfile.NamedTemporaryFile(suffix=".md", mode="w", delete=False) as f:
+            path = f.name
+        try:
+            md = generator.generate_markdown(data, output_path=path)
+            with open(path, "r") as f:
+                saved = f.read()
+            assert saved == md
+        finally:
+            import os
+            os.unlink(path)
+
+    def test_generate_markdown_empty_results(self):
+        generator = ReportGenerator()
+        data = {
+            "config": {"model": "test", "agent_type": "langchain", "sandbox": "docker"},
+            "results": [],
+        }
+        md = generator.generate_markdown(data)
+        assert "0" in md
+
+
+class TestCLIReportMarkdown:
+    def test_report_markdown_format(self, tmp_path):
+        from typer.testing import CliRunner
+
+        from agent_trust_lab.cli import app
+
+        runner = CliRunner()
+        results_path = str(tmp_path / "results.json")
+        output_path = str(tmp_path / "report.md")
+        data = {
+            "config": {"model": "test", "agent_type": "langchain", "sandbox": "docker"},
+            "results": [
+                {"trap_id": "t1", "metadata": {"severity": "medium"},
+                 "compliance": {"overall": "pass", "dimensions": {},
+                                "critical_count": 0, "high_count": 0}},
+            ],
+        }
+        with open(results_path, "w") as f:
+            json.dump(data, f)
+
+        result = runner.invoke(
+            app, ["report", results_path, "-f", "markdown", "-o", output_path]
+        )
+        assert result.exit_code == 0
+        assert "Markdown report" in result.stdout
+        with open(output_path, "r") as f:
+            content = f.read()
+        assert "# Agent Trust Evaluation Report" in content
+
+    def test_report_invalid_format(self, tmp_path):
+        from typer.testing import CliRunner
+
+        from agent_trust_lab.cli import app
+
+        runner = CliRunner()
+        results_path = str(tmp_path / "results.json")
+        with open(results_path, "w") as f:
+            json.dump(
+                {"config": {"model": "test"}, "results": []},
+                f,
+            )
+        result = runner.invoke(
+            app, ["report", results_path, "-f", "xml"]
+        )
+        assert result.exit_code == 1
+        assert "Invalid format" in result.stdout

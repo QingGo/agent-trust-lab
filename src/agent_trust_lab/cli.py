@@ -482,6 +482,18 @@ def _display_results(results):
             f"avg G-score: {avg_g:.2f}, avg faithfulness: {avg_f:.2f}"
         )
 
+        high_benign_refusal = False
+        for r in results:
+            if r.compliance is not None and r.compliance.benign_refusal_rate is not None:
+                if r.compliance.benign_refusal_rate > 0.1:
+                    high_benign_refusal = True
+                    break
+        if high_benign_refusal:
+            console.print(
+                "[yellow]Warning:[/yellow] Benign refusal rate exceeds 10%. "
+                "The agent may be overly cautious."
+            )
+
 
 @app.command()
 def calibrate(
@@ -589,7 +601,13 @@ def calibrate(
 def report(
     json_path: str = typer.Argument(..., help="Path to JSON report file (from --report export)"),
     output: Optional[str] = typer.Option(
-        None, "--output", "-o", help="Output HTML file path (default: same name, .html extension)"
+        None, "--output", "-o", help="Output file path (default: same name with format extension)"
+    ),
+    format: str = typer.Option(
+        "html",
+        "--format",
+        "-f",
+        help="Report format: html or markdown",
     ),
     calibration_profile: Optional[str] = typer.Option(
         None,
@@ -598,24 +616,31 @@ def report(
         help="Calibration profile ID to apply calibrated scores",
     ),
     open_browser: bool = typer.Option(
-        False, "--open", help="Open the generated report in the browser"
+        False, "--open", help="Open the generated HTML report in the browser"
     ),
 ):
-    """Generate an HTML evaluation report from a JSON export file.
+    """Generate an evaluation report (HTML or Markdown) from a JSON export file.
 
     Use --calibration-profile to apply Platt-scaled calibrated scores from a
     previously generated calibration profile (see 'calibrate' command).
+    Use --format markdown for CI/CD-friendly plain text output.
     """
     from pathlib import Path
 
     from agent_trust_lab.report import ReportGenerator
+
+    format_lower = format.lower()
+    if format_lower not in ("html", "markdown", "md"):
+        console.print(f"[red]Invalid format: {format}. Use 'html' or 'markdown'.[/red]")
+        raise typer.Exit(code=1)
 
     path = Path(json_path)
     if not path.is_file():
         console.print(f"[red]File not found: {json_path}[/red]")
         raise typer.Exit(code=1)
 
-    output_path = output or str(path.with_suffix(".html"))
+    ext = ".md" if format_lower in ("markdown", "md") else ".html"
+    output_path = output or str(path.with_suffix(ext))
     generator = ReportGenerator()
 
     import json
@@ -640,10 +665,14 @@ def report(
                 f"(κ={profile.kappa_gsar:.3f})[/dim]"
             )
 
-    generator.generate(data, output_path=output_path, calibration=cal_profile_data)
-    console.print(f"[green]HTML report saved to {output_path}[/green]")
+    if format_lower in ("markdown", "md"):
+        generator.generate_markdown(data, output_path=output_path, calibration=cal_profile_data)
+        console.print(f"[green]Markdown report saved to {output_path}[/green]")
+    else:
+        generator.generate(data, output_path=output_path, calibration=cal_profile_data)
+        console.print(f"[green]HTML report saved to {output_path}[/green]")
 
-    if open_browser:
+    if open_browser and format_lower == "html":
         import webbrowser
 
         abs_path = str(Path(output_path).resolve())

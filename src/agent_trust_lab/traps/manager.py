@@ -99,6 +99,8 @@ class TrapManager:
         seed: Optional[int] = None,
     ) -> EnhancedTrapDef:
         from agent_trust_lab.traps.mutator import FieldMutator
+        from agent_trust_lab.traps.structural_mutator import StructuralMutator
 
+        trap = StructuralMutator(seed=seed).mutate(trap)
         mutator = FieldMutator(seed=seed)
         return mutator.mutate(trap)
