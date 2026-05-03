@@ -107,7 +107,8 @@ class Orchestrator:
         return self._traps_cache
 
     def resolve_harness(self, agent_type: Optional[str] = None) -> AgentHarness:
-        from agent_trust_lab.adapters.registry import resolve
+        import agent_trust_lab.adapters  # noqa: F401 ensure registry is populated
+        from agent_trust_lab.adapters.registry import list_adapters, resolve
 
         agent = agent_type or self.config.agent_type
         sandbox_type = self.config.sandbox.lower()
@@ -120,7 +121,8 @@ class Orchestrator:
                     return from_config(self.config)
 
         raise ValueError(
-            f"Unknown harness configuration: agent_type={agent}, sandbox={sandbox_type}"
+            f"Unknown harness configuration: agent_type={agent}, sandbox={sandbox_type}. "
+            f"Registered adapters: {list_adapters()}"
         )
 
     def run_single(

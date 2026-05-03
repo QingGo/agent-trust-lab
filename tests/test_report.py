@@ -575,3 +575,287 @@ class TestCLIReportMarkdown:
         result = runner.invoke(app, ["report", results_path, "-f", "xml"])
         assert result.exit_code == 1
         assert "Invalid format" in result.stdout
+
+
+class TestShareCard:
+    """Tests for the share card (social media sharing) feature."""
+
+    def _make_multi_result(self, model_label, avg_g=0.85, avg_u=0.05, avg_c=0.03, avg_f=0.88):
+        return {
+            "trap_id": "trap_01",
+            "trap_type": "test_type",
+            "category": "general_agent",
+            "steps_count": 5,
+            "mutated": False,
+            "security_events": 0,
+            "metadata": {"severity": "medium", "difficulty": "easy"},
+            "compliance": {
+                "overall": "pass", "dimensions": {},
+                "critical_count": 0, "high_count": 0,
+            },
+            "hallucination": {
+                "step_count": 5,
+                "avg_g_score": avg_g,
+                "avg_u_score": avg_u,
+                "avg_c_score": avg_c,
+                "avg_faithfulness": avg_f,
+                "steps": [],
+            },
+        }
+
+    def _make_multi_data(self, models_configs):
+        configs = []
+        results = {}
+        for label, cfg in models_configs:
+            configs.append({
+                "model": cfg.get("model", label),
+                "thinking_enabled": cfg.get("thinking_enabled", False),
+                "reasoning_effort": cfg.get("reasoning_effort", ""),
+                "config_label": label,
+            })
+            result = self._make_multi_result(
+                label,
+                avg_g=cfg.get("avg_g", 0.85),
+                avg_u=cfg.get("avg_u", 0.05),
+                avg_c=cfg.get("avg_c", 0.03),
+                avg_f=cfg.get("avg_f", 0.88),
+            )
+            if "trap_01" not in results:
+                results["trap_01"] = {
+                    "trap_id": "trap_01",
+                    "trap_type": "test_type",
+                    "category": "general_agent",
+                    "metadata": {
+                        "base_task": "Test task",
+                        "trap_injection": "Test injection",
+                        "knowledge_source": "Test knowledge",
+                    },
+                    "scores": {},
+                }
+            results["trap_01"]["scores"][label] = result
+        return {"configs": configs, "results": list(results.values())}
+
+    def test_share_card_rendered_for_multi_model(self):
+        generator = ReportGenerator()
+        data = self._make_multi_data([
+            ("model-a (think high)", {
+                "model": "model-a", "thinking_enabled": True,
+                "reasoning_effort": "high",
+                "avg_g": 0.87, "avg_u": 0.07, "avg_c": 0.06, "avg_f": 0.87,
+            }),
+            ("model-a (no-think)", {
+                "model": "model-a", "thinking_enabled": False,
+                "avg_g": 0.81, "avg_u": 0.12, "avg_c": 0.05, "avg_f": 0.84,
+            }),
+        ])
+        html = generator.generate(data)
+        assert "share-card" in html
+        assert "share-card-champion" in html
+        assert "share-card-radar" in html
+        assert "share-card-metrics" in html
+        assert "svg" in html
+        assert "model-a (think high)" in html
+
+    def test_share_card_not_rendered_for_single_model(self):
+        generator = ReportGenerator()
+        data = {
+            "config": {"model": "test-model", "agent_type": "langchain", "sandbox": "docker"},
+            "results": [
+                {
+                    "trap_id": "test_01",
+                    "trap_type": "test_type",
+                    "category": "general_agent",
+                    "steps_count": 5,
+                    "mutated": False,
+                    "security_events": 0,
+                    "metadata": {"severity": "medium", "difficulty": "easy"},
+                }
+            ],
+        }
+        html = generator.generate(data)
+        assert "share-card" not in html
+
+    def test_radar_svg_generated(self):
+        generator = ReportGenerator()
+        models = [
+            {"config_label": "model-a (think high)", "model": "model-a",
+             "avg_g": 0.87, "avg_u": 0.07, "avg_c": 0.06, "avg_f": 0.87},
+            {"config_label": "model-a (no-think)", "model": "model-a",
+             "avg_g": 0.81, "avg_u": 0.12, "avg_c": 0.05, "avg_f": 0.84},
+            {"config_label": "model-a (think max)", "model": "model-a",
+             "avg_g": 0.49, "avg_u": 0.10, "avg_c": 0.04, "avg_f": 0.88},
+        ]
+        svg = generator._render_radar_svg(models, max_polygons=5)
+        assert "<svg" in svg
+        assert "</svg>" in svg
+        assert 'aria-label="Model comparison radar chart"' in svg
+        assert "polygon" in svg
+        assert "G" in svg
+        assert "1-U" in svg
+        assert "1-C" in svg
+        assert "circle" in svg
+
+    def test_radar_svg_limits_polygons(self):
+        generator = ReportGenerator()
+        models = []
+        for i in range(10):
+            models.append({
+                "config_label": f"model-{i}",
+                "model": "test",
+                "avg_g": 0.8 - i * 0.05,
+                "avg_u": 0.1,
+                "avg_c": 0.05,
+                "avg_f": 0.85,
+            })
+        svg = generator._render_radar_svg(models, max_polygons=3)
+        polygon_count = svg.count('<polygon points=')
+        grid_count = 5  # 5 grid level polygons
+        assert polygon_count == grid_count + 3  # grid + 3 model polygons
+
+    def test_generate_share_insight_no_models(self):
+        generator = ReportGenerator()
+        result = generator._generate_share_insight({"models": []}, {"lang_code": "English"})
+        assert result == ""
+
+    def test_generate_share_insight_single_model(self):
+        generator = ReportGenerator()
+        result = generator._generate_share_insight(
+            {"models": [
+                {"config_label": "test", "avg_g": 0.8,
+                 "avg_u": 0.1, "avg_c": 0.05, "avg_f": 0.85},
+            ]},
+            {"lang_code": "English"},
+        )
+        assert result == ""  # Less than 2 models returns empty
+
+    def test_ranking_score_based_stars(self):
+        generator = ReportGenerator()
+        data = self._make_multi_data([
+            ("good (think)", {"model": "good",
+             "avg_g": 0.87, "avg_u": 0.07, "avg_c": 0.06, "avg_f": 0.87}),
+            ("mid (no-think)", {"model": "mid",
+             "avg_g": 0.65, "avg_u": 0.15, "avg_c": 0.08, "avg_f": 0.75}),
+            ("bad (think max)", {"model": "bad",
+             "avg_g": 0.30, "avg_u": 0.30, "avg_c": 0.20, "avg_f": 0.50}),
+        ])
+        html = generator.generate(data)
+        assert "★★★★" in html  # good model
+        assert "★★★" in html  # mid model (0.6-0.8)
+        assert "★" in html   # bad model (<0.4), but ★ is a subset of ★★/★★★, test more carefully
+        # Verify the correct number of stars for each rank
+        # rank 1 (0.87): ★★★★
+        # rank 2 (0.65): ★★★
+        # rank 3 (0.30): ★
+        assert "★★★★" in html
+        assert "★★★" in html
+        assert '<td class="rank-stars">★</td>' in html or '<td class="rank-stars">★' in html
+
+    def test_share_card_css_included(self):
+        generator = ReportGenerator()
+        data = self._make_multi_data([
+            ("model-a (think high)", {"model": "model-a", "avg_g": 0.87}),
+            ("model-a (no-think)", {"model": "model-a", "avg_g": 0.81}),
+        ])
+        html = generator.generate(data)
+        assert ".share-card {" in html
+        assert ".share-card-brand {" in html
+        assert ".share-card-champion {" in html
+        assert ".share-card-radar {" in html
+        assert ".share-card-insight {" in html
+        assert ".share-card-metrics {" in html
+        assert ".share-card-ranking {" in html
+        assert ".share-card-footer {" in html
+
+
+class TestBilingualReport:
+    """Tests for bilingual (en + zh) report generation."""
+
+    @staticmethod
+    def _data():
+        """Build a minimal multi-model data dict for bilingual tests."""
+        configs = [
+            {"model": "model-a", "thinking_enabled": False,
+             "reasoning_effort": "", "config_label": "model-a (no-think)"},
+            {"model": "model-a", "thinking_enabled": True,
+             "reasoning_effort": "high", "config_label": "model-a (think high)"},
+        ]
+        result = {
+            "trap_id": "trap_01",
+            "trap_type": "test_type",
+            "category": "general_agent",
+            "steps_count": 5,
+            "mutated": False,
+            "security_events": 0,
+            "metadata": {"severity": "medium"},
+            "compliance": {
+                "overall": "pass", "dimensions": {},
+                "critical_count": 0, "high_count": 0,
+            },
+            "hallucination": {
+                "step_count": 5,
+                "avg_g_score": 0.85, "avg_u_score": 0.05,
+                "avg_c_score": 0.03, "avg_faithfulness": 0.88,
+                "steps": [],
+            },
+        }
+        scores = {
+            "model-a (no-think)": dict(result),
+            "model-a (think high)": dict(result),
+        }
+        scores["model-a (no-think)"]["hallucination"]["avg_g_score"] = 0.81
+        return {
+            "configs": configs,
+            "results": [{
+                "trap_id": "trap_01",
+                "trap_type": "test_type",
+                "category": "general_agent",
+                "metadata": {"base_task": "Test", "trap_injection": "Test",
+                             "knowledge_source": "Test"},
+                "scores": scores,
+            }],
+        }
+
+    def test_generate_both_creates_two_files(self, tmp_path):
+        generator = ReportGenerator()
+        data = self._data()
+        output_dir = str(tmp_path)
+        en_path, zh_path = generator.generate_both(data, output_dir, "comparison")
+        import os
+        assert os.path.isfile(en_path)
+        assert os.path.isfile(zh_path)
+        assert en_path.endswith("comparison.html")
+        assert zh_path.endswith("comparison_zh.html")
+
+    def test_generate_both_files_have_lang_switch(self, tmp_path):
+        generator = ReportGenerator()
+        data = self._data()
+        output_dir = str(tmp_path)
+        en_path, zh_path = generator.generate_both(data, output_dir, "comparison")
+        with open(en_path) as f:
+            en_html = f.read()
+        with open(zh_path) as f:
+            zh_html = f.read()
+        assert "lang-switch" in en_html
+        assert "lang-switch" in zh_html
+        assert "comparison_zh.html" in en_html
+        assert "comparison.html" in zh_html
+
+    def test_single_lang_no_lang_switch(self):
+        generator = ReportGenerator()
+        data = self._data()
+        html = generator.generate(data, lang="en")
+        assert '<div class="lang-switch">' not in html
+
+    def test_lang_switch_highlights_current_language(self, tmp_path):
+        generator = ReportGenerator()
+        data = self._data()
+        output_dir = str(tmp_path)
+        en_path, zh_path = generator.generate_both(data, output_dir, "comparison")
+        with open(en_path) as f:
+            en_html = f.read()
+        with open(zh_path) as f:
+            zh_html = f.read()
+        assert "lang-active\">English</span>" in en_html
+        assert "lang-active\">中文</span>" in zh_html
+        assert 'href="comparison_zh.html">中文</a>' in en_html
+        assert 'href="comparison.html">English</a>' in zh_html

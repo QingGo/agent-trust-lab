@@ -690,3 +690,281 @@ report:
         assert result.exit_code == 0
         with open(os.path.join(str(output_dir), "comparison.html")) as f:
             assert "可信" in f.read()
+
+
+class TestBatchConcurrent:
+    def test_parse_batch_yaml_concurrent_true(self, tmp_path):
+        yaml_path = tmp_path / "batch.yaml"
+        yaml_path.write_text("""
+evaluations:
+  - label: "test"
+    traps:
+      trap_ids: ["t1"]
+common:
+  concurrent: true
+""")
+        cfg = parse_batch_yaml(str(yaml_path))
+        assert cfg.concurrent is True
+
+    def test_parse_batch_yaml_concurrent_default_false(self, tmp_path):
+        yaml_path = tmp_path / "batch.yaml"
+        yaml_path.write_text("""
+evaluations:
+  - label: "test"
+    traps:
+      trap_ids: ["t1"]
+""")
+        cfg = parse_batch_yaml(str(yaml_path))
+        assert cfg.concurrent is False
+
+    def test_parse_batch_yaml_concurrent_string_true(self, tmp_path):
+        yaml_path = tmp_path / "batch.yaml"
+        yaml_path.write_text("""
+evaluations:
+  - label: "test"
+    traps:
+      trap_ids: ["t1"]
+common:
+  concurrent: "true"
+""")
+        cfg = parse_batch_yaml(str(yaml_path))
+        assert cfg.concurrent is True
+
+    def test_run_batch_concurrent_two_configs(self, tmp_path):
+        trap_dir = tmp_path / "traps" / "general"
+        trap_dir.mkdir(parents=True)
+        (trap_dir / "ct01.yaml").write_text(
+            """trap_id: ct01
+trap_type: parameter_hallucination
+version: "1.0.0"
+severity: medium
+difficulty: medium
+category: general_agent
+base_task: "Test concurrent."
+tools: [{name: shell}]
+trap_injection: "Use fake param."
+variation_rules: []
+""",
+            encoding="utf-8",
+        )
+        output_dir = os.path.join(str(tmp_path), "output_concurrent")
+        cfg = BatchConfig(
+            evaluations=[
+                EvaluationSpec(
+                    label="concurrent-a",
+                    model="deepseek-a",
+                    traps={"trap_ids": ["ct01"]},
+                ),
+                EvaluationSpec(
+                    label="concurrent-b",
+                    model="deepseek-b",
+                    traps={"trap_ids": ["ct01"]},
+                ),
+            ],
+            trap_library_path=str(trap_dir.parent),
+            output_dir=output_dir,
+            concurrent=True,
+        )
+
+        merged = run_batch(cfg)
+
+        assert "configs" in merged
+        assert len(merged["configs"]) == 2
+        assert merged["configs"][0]["model"] == "deepseek-a"
+        assert merged["configs"][1]["model"] == "deepseek-b"
+
+        assert "results" in merged
+        assert len(merged["results"]) == 1
+        assert len(merged["results"][0]["scores"]) == 2
+
+        assert os.path.isfile(os.path.join(output_dir, "concurrent-a.json"))
+        assert os.path.isfile(os.path.join(output_dir, "concurrent-b.json"))
+        assert os.path.isfile(os.path.join(output_dir, "comparison.html"))
+
+    def test_run_batch_concurrent_single_config_no_threads(self, tmp_path):
+        trap_dir = tmp_path / "traps" / "general"
+        trap_dir.mkdir(parents=True)
+        (trap_dir / "ct01.yaml").write_text(
+            """trap_id: ct01
+trap_type: parameter_hallucination
+version: "1.0.0"
+severity: medium
+difficulty: medium
+category: general_agent
+base_task: "Test concurrent solo."
+tools: [{name: shell}]
+trap_injection: "Use fake param."
+variation_rules: []
+""",
+            encoding="utf-8",
+        )
+        output_dir = os.path.join(str(tmp_path), "output_single_concurrent")
+        cfg = BatchConfig(
+            evaluations=[
+                EvaluationSpec(
+                    label="solo-concurrent",
+                    model="deepseek-solo",
+                    traps={"trap_ids": ["ct01"]},
+                ),
+            ],
+            trap_library_path=str(trap_dir.parent),
+            output_dir=output_dir,
+            concurrent=True,
+        )
+
+        merged = run_batch(cfg)
+        assert len(merged["configs"]) == 1
+        assert os.path.isfile(os.path.join(output_dir, "solo-concurrent.json"))
+
+
+class TestCLIMultiTrapId:
+    def test_run_command_help_shows_trap_id_short_flag(self):
+        from typer.testing import CliRunner
+
+        from agent_trust_lab.cli import app
+
+        runner = CliRunner()
+        result = runner.invoke(app, ["run", "--help"])
+        assert result.exit_code == 0
+        assert "-t" in result.stdout
+
+    @patch("agent_trust_lab.llm.get_api_key", return_value=None)
+    def test_run_command_single_trap_id(self, _mock_key):
+        from typer.testing import CliRunner
+
+        from agent_trust_lab.cli import app
+
+        runner = CliRunner()
+        result = runner.invoke(
+            app,
+            [
+                "run",
+                "--trap-id", "test_trap_01",
+                "--sandbox", "dry-run",
+                "--skip-hallukg",
+            ],
+        )
+        assert result.exit_code == 0
+
+    @patch("agent_trust_lab.llm.get_api_key", return_value=None)
+    def test_run_command_multiple_trap_ids(self, _mock_key):
+        from typer.testing import CliRunner
+
+        from agent_trust_lab.cli import app
+
+        runner = CliRunner()
+        result = runner.invoke(
+            app,
+            [
+                "run",
+                "-t", "test_trap_01",
+                "-t", "test_trap_02",
+                "--sandbox", "dry-run",
+                "--skip-hallukg",
+            ],
+        )
+        assert result.exit_code == 0
+
+    @patch("agent_trust_lab.llm.get_api_key", return_value=None)
+    def test_run_code_command_multiple_trap_ids(self, _mock_key):
+        from typer.testing import CliRunner
+
+        from agent_trust_lab.cli import app
+
+        runner = CliRunner()
+        result = runner.invoke(
+            app,
+            [
+                "run-code",
+                "-t", "test_trap_01",
+                "-t", "test_trap_02",
+                "--sandbox", "dry-run",
+                "--skip-hallukg",
+            ],
+        )
+        assert result.exit_code == 0
+
+
+class TestAdapterPreImportRegression:
+    """Regression tests for the adapter registry race condition fix.
+
+    The fix: batch.py does `import agent_trust_lab.adapters` at module level to
+    ensure all 8 adapters are registered before any worker threads start.
+    Without this, concurrent evaluations race on the first import and some
+    threads see an empty registry (~60% failure rate with parallel=10).
+    """
+
+    def test_importing_batch_populates_registry(self):
+        from agent_trust_lab.adapters.registry import list_adapters
+
+        adapters = list_adapters()
+        expected = {
+            "claude-code", "codex", "docker", "dry-run",
+            "gemini-cli", "langchain", "openai", "opencode",
+        }
+        assert set(adapters) == expected, f"Expected 8 adapters, got {adapters}"
+
+    def test_fresh_process_concurrent_resolve_harness(self, tmp_path):
+        import subprocess
+        import sys
+
+        script = tmp_path / "concurrent_test.py"
+        script.write_text("""
+from concurrent.futures import ThreadPoolExecutor
+from agent_trust_lab.config import EvaluationConfig
+from agent_trust_lab.orchestrator import Orchestrator
+
+errors = []
+def resolve(idx):
+    try:
+        c = EvaluationConfig(
+            model='deepseek-v4-flash',
+            agent_type='langchain',
+            sandbox='docker',
+            thinking_enabled=True,
+            reasoning_effort='max',
+        )
+        orch = Orchestrator(c)
+        orch.resolve_harness()
+    except Exception as e:
+        errors.append(f'Thread {idx}: {e}')
+
+with ThreadPoolExecutor(max_workers=8) as pool:
+    for f in [pool.submit(resolve, i) for i in range(24)]:
+        f.result()
+
+assert not errors, f'Concurrent resolve_harness failed: {errors}'
+print('OK')
+""")
+        result = subprocess.run(
+            [sys.executable, str(script)],
+            capture_output=True, text=True, timeout=30,
+        )
+        assert result.returncode == 0, (
+            f"Subprocess failed:\nstderr={result.stderr}\nstdout={result.stdout}"
+        )
+        assert "OK" in result.stdout
+
+    @patch("agent_trust_lab.llm.get_api_key", return_value=None)
+    def test_concurrent_resolve_harness_no_race(self, _mock_key):
+        from concurrent.futures import ThreadPoolExecutor
+
+        from agent_trust_lab.config import EvaluationConfig
+        from agent_trust_lab.orchestrator import Orchestrator
+
+        def resolve_in_thread(idx: int) -> bool:
+            config = EvaluationConfig(
+                model="deepseek-v4-flash",
+                agent_type="langchain",
+                sandbox="docker",
+                thinking_enabled=True,
+                reasoning_effort="high",
+            )
+            orch = Orchestrator(config)
+            harness = orch.resolve_harness()
+            return harness is not None
+
+        with ThreadPoolExecutor(max_workers=8) as pool:
+            futures = [pool.submit(resolve_in_thread, i) for i in range(16)]
+            for f in futures:
+                assert f.result() is True, "resolve_harness() failed in concurrent execution"

@@ -6,14 +6,15 @@ evaluation runs, merges results, and generates a comparison report.
 
 import json
 import os
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 import yaml
 
 from agent_trust_lab.config import EvaluationConfig
 from agent_trust_lab.log import get_logger
-from agent_trust_lab.orchestrator import Orchestrator
+from agent_trust_lab.orchestrator import EvaluationResult, Orchestrator
 
 logger = get_logger("batch")
 
@@ -44,6 +45,7 @@ class BatchConfig:
     sandbox_network: bool = False
     docker_host: str = ""
     parallel: int = 1
+    concurrent: bool = False
     output_dir: str = "./results/"
     report_format: str = "html"
     report_lang: str = "en"
@@ -112,6 +114,7 @@ def parse_batch_yaml(yaml_path: str) -> BatchConfig:
         sandbox_network=bool(common.get("sandbox_network", False)),
         docker_host=str(common.get("docker_host", "")),
         parallel=int(common.get("parallel", 1)),
+        concurrent=bool(common.get("concurrent", False)),
         output_dir=str(common.get("output_dir", "./results/")),
         report_format=str(report_cfg.get("format", "html")).lower(),
         report_lang=str(report_cfg.get("lang", "en")).lower(),
@@ -121,12 +124,45 @@ def parse_batch_yaml(yaml_path: str) -> BatchConfig:
     )
 
 
-def run_batch(batch_config: BatchConfig) -> Dict[str, Any]:
-    """Execute all evaluations in a batch configuration serially.
+def _run_single_eval(
+    spec: EvaluationSpec, batch_config: "BatchConfig"
+) -> Tuple[str, List[EvaluationResult], str]:
+    """Run a single evaluation spec and return (safe_label, results, json_path)."""
+    config = EvaluationConfig(
+        model=spec.model,
+        agent_type=spec.agent_type,
+        thinking_enabled=spec.thinking_enabled,
+        reasoning_effort=spec.reasoning_effort,
+        base_url=spec.base_url,
+        api_key=spec.api_key,
+        skip_hallukg=spec.skip_hallukg,
+        sandbox=batch_config.sandbox,
+        sandbox_image=batch_config.sandbox_image,
+        sandbox_network=batch_config.sandbox_network,
+        docker_host=batch_config.docker_host,
+        parallel=batch_config.parallel,
+        trap_library_path=batch_config.trap_library_path,
+        calibration_profile=batch_config.calibration_profile,
+        timeout=batch_config.timeout,
+    )
 
-    Each evaluation specification is run in sequence. Results are saved
-    as individual JSON files, then merged into a multi-model comparison
-    report.
+    safe_label = spec.label.replace(" ", "_").replace("/", "_")
+    orch = Orchestrator(config)
+    results = list(orch.run_traps(**spec.traps))
+
+    json_path = os.path.join(batch_config.output_dir, f"{safe_label}.json")
+    orch.export_results(results, json_path)
+    logger.info("  -> %d results saved to %s", len(results), json_path)
+
+    return safe_label, results, json_path
+
+
+def run_batch(batch_config: BatchConfig) -> Dict[str, Any]:
+    """Execute all evaluations in a batch configuration.
+
+    When concurrent=True, evaluations run in parallel via ThreadPoolExecutor.
+    Each evaluation creates its own Orchestrator instance.
+    Trap-level parallelism within each evaluation is controlled by batch_config.parallel.
 
     Args:
         batch_config: Parsed BatchConfig from parse_batch_yaml().
@@ -137,35 +173,42 @@ def run_batch(batch_config: BatchConfig) -> Dict[str, Any]:
     os.makedirs(batch_config.output_dir, exist_ok=True)
 
     json_paths: List[str] = []
-    for spec in batch_config.evaluations:
-        logger.info("Running: %s (model=%s, agent=%s)", spec.label, spec.model, spec.agent_type)
 
-        config = EvaluationConfig(
-            model=spec.model,
-            agent_type=spec.agent_type,
-            thinking_enabled=spec.thinking_enabled,
-            reasoning_effort=spec.reasoning_effort,
-            base_url=spec.base_url,
-            api_key=spec.api_key,
-            skip_hallukg=spec.skip_hallukg,
-            sandbox=batch_config.sandbox,
-            sandbox_image=batch_config.sandbox_image,
-            sandbox_network=batch_config.sandbox_network,
-            docker_host=batch_config.docker_host,
-            parallel=batch_config.parallel,
-            trap_library_path=batch_config.trap_library_path,
-            calibration_profile=batch_config.calibration_profile,
-            timeout=batch_config.timeout,
+    if batch_config.concurrent and len(batch_config.evaluations) > 1:
+        logger.info(
+            "Running %d evaluations concurrently (max_workers=%d)",
+            len(batch_config.evaluations),
+            len(batch_config.evaluations),
         )
-
-        orch = Orchestrator(config)
-        results = orch.run_traps(**spec.traps)
-
-        safe_label = spec.label.replace(" ", "_").replace("/", "_")
-        json_path = os.path.join(batch_config.output_dir, f"{safe_label}.json")
-        orch.export_results(results, json_path)
-        json_paths.append(json_path)
-        logger.info("  -> %d results saved to %s", len(results), json_path)
+        with ThreadPoolExecutor(max_workers=len(batch_config.evaluations)) as executor:
+            futures = {
+                executor.submit(_run_single_eval, spec, batch_config): i
+                for i, spec in enumerate(batch_config.evaluations)
+            }
+            for future in futures:
+                try:
+                    safe_label, results, json_path = future.result()
+                    logger.info(
+                        "Completed: %s (model=%s) — %d traps",
+                        safe_label,
+                        batch_config.evaluations[futures[future]].model,
+                        len(results),
+                    )
+                    json_paths.append(json_path)
+                except Exception as e:
+                    idx = futures[future]
+                    logger.error(
+                        "Evaluation '%s' failed: %s", batch_config.evaluations[idx].label, e
+                    )
+    else:
+        for spec in batch_config.evaluations:
+            logger.info("Running: %s (model=%s, agent=%s)", spec.label, spec.model, spec.agent_type)
+            try:
+                safe_label, results, json_path = _run_single_eval(spec, batch_config)
+                json_paths.append(json_path)
+            except Exception as e:
+                logger.error("Evaluation '%s' failed: %s", spec.label, e)
+                continue
 
     if len(json_paths) < 2:
         logger.warning("Only 1 evaluation run; comparison report requires >= 2.")
@@ -196,13 +239,17 @@ def run_batch(batch_config: BatchConfig) -> Dict[str, Any]:
             lang=batch_config.report_lang,
         )
     else:
-        report_path = os.path.join(batch_config.output_dir, "comparison.html")
-        generator.generate(
-            merged,
-            output_path=report_path,
-            calibration=cal_data,
-            lang=batch_config.report_lang,
-        )
+        if batch_config.report_lang == "both":
+            generator.generate_both(merged, batch_config.output_dir, "comparison", cal_data)
+            report_path = os.path.join(batch_config.output_dir, "comparison.html")
+        else:
+            report_path = os.path.join(batch_config.output_dir, "comparison.html")
+            generator.generate(
+                merged,
+                output_path=report_path,
+                calibration=cal_data,
+                lang=batch_config.report_lang,
+            )
     logger.info("Comparison report saved to %s", report_path)
 
     if batch_config.report_open and batch_config.report_format == "html":

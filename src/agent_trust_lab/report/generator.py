@@ -102,6 +102,19 @@ I18N = {
         "best_label": "Best",
         "step_details": "Step Details",
         "model_scores_title": "Model Scores",
+        "share_card_brand": "Agent Trust Lab",
+        "share_card_subtitle": "AI Trustworthiness Evaluation",
+        "share_card_champion": "Champion",
+        "share_card_insight_label": "Key Insight",
+        "share_card_ranking": "Ranking",
+        "share_card_config": "Config",
+        "share_card_rating": "Rating",
+        "share_card_models": "configs",
+        "share_card_traps": "traps",
+        "share_card_full_report": "Full report",
+        "lang_switch_label": "Language",
+        "lang_switch_en": "English",
+        "lang_switch_zh": "中文",
     },
     "zh": {
         "title": "Agent 可信评测报告",
@@ -194,6 +207,19 @@ I18N = {
         "best_label": "最优",
         "step_details": "步骤详情",
         "model_scores_title": "模型得分对比",
+        "share_card_brand": "Agent Trust Lab",
+        "share_card_subtitle": "AI 可信度评测",
+        "share_card_champion": "冠军",
+        "share_card_insight_label": "核心洞察",
+        "share_card_ranking": "排名",
+        "share_card_config": "配置",
+        "share_card_rating": "评级",
+        "share_card_models": "个配置",
+        "share_card_traps": "个陷阱",
+        "share_card_full_report": "完整报告",
+        "lang_switch_label": "语言",
+        "lang_switch_en": "English",
+        "lang_switch_zh": "中文",
     },
 }
 
@@ -262,6 +288,68 @@ LEGEND_HTML = """<div class="legend-section" id="legend">
   </div>
 </div>"""
 
+SHARE_CARD_TEMPLATE = """<div class="share-card">
+  <div class="share-card-brand">
+    <div>
+      <h2>{{ lang.share_card_brand }}</h2>
+      <div class="brand-sub">{{ lang.share_card_subtitle }}</div>
+    </div>
+    <div style="text-align:right;">
+      <div style="font-size:11px;color:#8b94b8;">{{ models|length }} {{ lang.share_card_models }}</div>
+      <div style="font-size:11px;color:#8b94b8;">{{ total_traps }} {{ lang.share_card_traps }}</div>
+    </div>
+  </div>
+  <div class="share-card-body">
+    {% if champion %}
+    <div class="share-card-champion">
+      <div>
+        <div class="champ-label">&#127942; {{ lang.share_card_champion }}</div>
+        <div class="champ-name">{{ champion.config_label }}</div>
+      </div>
+      <div class="champ-score">{{ "%.2f"|format(champion.overall) }}</div>
+    </div>
+    {% endif %}
+    <div class="share-card-radar">
+      {{ radar_svg }}
+    </div>
+    {% if insight_text %}
+    <div class="share-card-insight">
+      <span class="insight-icon">&#128161;</span>
+      <strong>{{ lang.share_card_insight_label }}:</strong> {{ insight_text }}
+    </div>
+    {% endif %}
+    <div class="share-card-metrics">
+      {% for m in metric_cards %}
+      <div class="share-card-metric">
+        <div class="metric-label">{{ m.label }}</div>
+        <div class="metric-value" style="color:{{ m.color }};">{{ "%.2f"|format(m.value) }}</div>
+        <div class="metric-bar"><div class="metric-bar-fill" style="width:{{ m.pct }}%;background:{{ m.color }};"></div></div>
+      </div>
+      {% endfor %}
+    </div>
+    {% if ranking|length > 1 %}
+    <div class="share-card-ranking">
+      <h4>{{ lang.share_card_ranking }} ({{ lang.avg_g_score }})</h4>
+      <table>
+        {% for r in ranking %}
+        <tr>
+          <td class="rank-num">#{{ r.rank }}</td>
+          <td style="font-size:12px;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="{{ r.config_label }}">{{ r.config_label }}</td>
+          <td><div class="rank-bar-bg"><div class="rank-bar-fill" style="width:{{ r.g_pct }}%;background:{{ r.color }};"></div></div></td>
+          <td class="rank-score" style="color:{{ r.color }};">{{ "%.2f"|format(r.avg_g) }}</td>
+          <td class="rank-stars">{{ r.stars }}</td>
+        </tr>
+        {% endfor %}
+      </table>
+    </div>
+    {% endif %}
+  </div>
+  <div class="share-card-footer">
+    <span>{{ generated_at }}</span>
+    <a class="share-cta" href="https://github.com/anomalyco/agent-trust-lab">{{ lang.share_card_full_report }} &#8599;</a>
+  </div>
+</div>"""
+
 CSS = """
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
@@ -282,6 +370,11 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-
           color: #fff; padding: 32px; border-radius: 12px; margin-bottom: 24px; }
 .header h1 { font-size: 24px; margin-bottom: 8px; }
 .header .meta { color: #a0aec0; font-size: 14px; }
+.lang-switch { float: right; font-size: 12px; padding: 4px 0; }
+.lang-switch a { color: #a0aec0; text-decoration: none; margin-left: 6px; }
+.lang-switch a:hover { color: #fff; text-decoration: underline; }
+.lang-switch .lang-active { color: #fff; font-weight: 700; }
+.lang-switch .lang-sep { color: #4a5568; margin: 0 4px; }
 .benign-warning { background: #fefcbf; border: 1px solid #d69e2e; border-radius: 8px;
                   padding: 10px 16px; margin-bottom: 20px; font-size: 13px; color: #975a16; }
 .summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
@@ -360,6 +453,61 @@ td.row-contradicted { background: #fc9db6; }
           margin-top: 32px; padding: 16px; }
 """
 
+SHARE_CARD_CSS = """
+.share-card { background: #fff; border-radius: 16px; max-width: 640px; margin: 0 auto 24px;
+              box-shadow: 0 4px 24px rgba(0,0,0,0.12); overflow: hidden; }
+.share-card-brand { background: linear-gradient(135deg, #1a1a2e, #2d3561);
+                    color: #fff; padding: 16px 24px; display: flex;
+                    justify-content: space-between; align-items: center; }
+.share-card-brand h2 { font-size: 18px; font-weight: 700; letter-spacing: 0.5px; }
+.share-card-brand .brand-sub { font-size: 12px; color: #8b94b8; }
+.share-card-body { padding: 24px 24px 16px; }
+.share-card-champion { background: linear-gradient(135deg, #f0fdf4, #dcfce7);
+                       border: 1px solid #86efac; border-radius: 10px;
+                       padding: 12px 16px; margin-bottom: 20px; display: flex;
+                       justify-content: space-between; align-items: center; }
+.share-card-champion .champ-label { font-size: 12px; text-transform: uppercase;
+    color: #166534; font-weight: 600; }
+.share-card-champion .champ-name { font-size: 18px; font-weight: 700; color: #14532d; }
+.share-card-champion .champ-score { font-size: 28px; font-weight: 800; color: #15803d; }
+.share-card-radar { display: flex; justify-content: center; margin-bottom: 20px; }
+.share-card-radar svg { max-width: 100%; height: auto; }
+.share-card-insight { background: #eff6ff; border: 1px solid #93c5fd; border-radius: 10px;
+                      padding: 14px 16px; margin-bottom: 20px; font-size: 14px;
+                      color: #1e40af; line-height: 1.5; }
+.share-card-insight .insight-icon { font-size: 18px; margin-right: 6px; }
+.share-card-metrics { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px;
+                      margin-bottom: 20px; }
+.share-card-metric { background: #f7fafc; border-radius: 8px; padding: 12px;
+                     text-align: center; }
+.share-card-metric .metric-label { font-size: 10px; text-transform: uppercase;
+    color: #718096; margin-bottom: 4px; letter-spacing: 0.5px; }
+.share-card-metric .metric-value { font-size: 22px; font-weight: 700; }
+.share-card-metric .metric-bar { height: 4px; border-radius: 2px; margin-top: 6px;
+    background: #e2e8f0; overflow: hidden; }
+.share-card-metric .metric-bar-fill { height: 100%; border-radius: 2px; }
+.share-card-ranking { margin-bottom: 16px; }
+.share-card-ranking h4 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px;
+    color: #718096; margin-bottom: 10px; }
+.share-card-ranking table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.share-card-ranking th { text-align: left; padding: 6px 8px; color: #a0aec0;
+    font-size: 11px; font-weight: 600; border-bottom: 1px solid #e2e8f0; }
+.share-card-ranking td { padding: 6px 8px; border-bottom: 1px solid #e2e8f0; }
+.share-card-ranking .rank-num { width: 40px; font-weight: 600; color: #4a5568; }
+.share-card-ranking .rank-bar-bg { width: 80px; height: 6px; background: #e2e8f0;
+    border-radius: 3px; overflow: hidden; }
+.share-card-ranking .rank-bar-fill { height: 100%; border-radius: 3px; }
+.share-card-ranking .rank-score { width: 48px; text-align: right; font-weight: 600;
+    font-size: 13px; }
+.share-card-ranking .rank-stars { width: 64px; text-align: right; font-size: 11px;
+    color: #a0aec0; }
+.share-card-footer { padding: 12px 24px; background: #f7fafc; border-top: 1px solid #e2e8f0;
+                     display: flex; justify-content: space-between; align-items: center;
+                     font-size: 12px; color: #718096; }
+.share-card-footer .share-cta { color: #3182ce; font-weight: 600; text-decoration: none; }
+.share-card-footer .share-cta:hover { text-decoration: underline; }
+"""
+
 TEMPLATE = """<!DOCTYPE html>
 <html lang="{{ lang_code }}">
 <head>
@@ -371,7 +519,10 @@ TEMPLATE = """<!DOCTYPE html>
 <body>
 <div class="container">
 
+{{ share_card_html }}
+
 <div class="header">
+  {{ lang_switch_html }}
   <h1>{{ lang.title }}</h1>
   <div class="meta">
     {% if configs %}
@@ -687,12 +838,309 @@ class ReportGenerator:
         t = Template(LEGEND_HTML)
         return t.render(lang=lang_dict, summary=summary)
 
+    @staticmethod
+    def _render_lang_switch(
+        lang_dict: Dict[str, str], lang_code: str, lang_other_url: str
+    ) -> str:
+        """Render a language switch bar linking to the other language version."""
+        if not lang_other_url:
+            return ""
+        other_code = "zh" if lang_code == "en" else "en"
+        other_label = lang_dict.get(f"lang_switch_{other_code}", other_code)
+        current_label = lang_dict.get(f"lang_switch_{lang_code}", lang_code)
+        label = lang_dict.get("lang_switch_label", "Language")
+        return (
+            f'<div class="lang-switch">'
+            f'<span style="color:#718096;font-size:12px;">{label}:</span>'
+            f'<span class="lang-active">{current_label}</span>'
+            f'<span class="lang-sep">|</span>'
+            f'<a href="{lang_other_url}">{other_label}</a>'
+            f"</div>"
+        )
+
+    @staticmethod
+    def _render_radar_svg(
+        models: List[Dict[str, Any]], max_polygons: int = 5, size: int = 280
+    ) -> str:
+        """Generate an inline SVG radar chart for model comparison.
+
+        Dims: G (top), F (right), 1-U (bottom), 1-C (left) — all higher=better.
+        """
+        import math as _math
+
+        # Score helpers: compute overall score as balanced average
+        def _overall(m: Dict[str, Any]) -> float:
+            g = m.get("avg_g", 0)
+            f = m.get("avg_f", 0)
+            iu = 1.0 - m.get("avg_u", 0)
+            ic = 1.0 - m.get("avg_c", 0)
+            return (g + f + iu + ic) / 4.0
+
+        # ---- Rank and sort ----
+        ranked = sorted(models, key=_overall, reverse=True)
+        top_polys = ranked[:max_polygons]
+
+        dims = [
+            {"name": "G", "angle": -_math.pi / 2},
+            {"name": "F", "angle": 0},
+            {"name": "1-U", "angle": _math.pi / 2},
+            {"name": "1-C", "angle": _math.pi},
+        ]
+        colors = ["#3182ce", "#e53e3e", "#38a169", "#dd6b20", "#805ad5"]
+        mcolors = colors + ["#a0aec0"] * max(0, len(models) - len(colors))
+        cx = size / 2 + 24
+        cy = size / 2 + 10
+        r = size * 0.34
+        grid_levels = [0.2, 0.4, 0.6, 0.8, 1.0]
+
+        svg_parts: List[str] = []
+        svg_parts.append(
+            f'<svg width="{size + 48}" height="{size + 48}" '
+            f'viewBox="0 0 {size + 48} {size + 48}" '
+            f'xmlns="http://www.w3.org/2000/svg" role="img" '
+            f'aria-label="Model comparison radar chart">'
+        )
+
+        # Grid
+        for level in grid_levels:
+            pts = []
+            for d in dims:
+                lr = r * level
+                x = cx + lr * _math.cos(d["angle"])
+                y = cy + lr * _math.sin(d["angle"])
+                pts.append(f"{x:.1f},{y:.1f}")
+            svg_parts.append(
+                f'<polygon points="{" ".join(pts)}" '
+                f'fill="none" stroke="#e2e8f0" stroke-width="1" />'
+            )
+
+        # Axes
+        for d in dims:
+            ex = cx + r * _math.cos(d["angle"])
+            ey = cy + r * _math.sin(d["angle"])
+            svg_parts.append(
+                f'<line x1="{cx:.0f}" y1="{cy:.0f}" x2="{ex:.1f}" y2="{ey:.1f}" '
+                f'stroke="#cbd5e0" stroke-width="1" />'
+            )
+
+        # Polygons for top models
+        for i, m in enumerate(top_polys):
+            g = m.get("avg_g", 0)
+            f = m.get("avg_f", 0)
+            iu = 1.0 - m.get("avg_u", 0)
+            ic = 1.0 - m.get("avg_c", 0)
+            vals = [g, f, iu, ic]
+            pts = []
+            for j, d in enumerate(dims):
+                vr = r * max(0.0, min(1.0, vals[j]))
+                x = cx + vr * _math.cos(d["angle"])
+                y = cy + vr * _math.sin(d["angle"])
+                pts.append(f"{x:.1f},{y:.1f}")
+            color = mcolors[i % len(mcolors)]
+            svg_parts.append(
+                f'<polygon points="{" ".join(pts)}" '
+                f'fill="{color}" fill-opacity="0.12" stroke="{color}" '
+                f'stroke-width="2" stroke-linejoin="round" />'
+            )
+            # Dots at vertices
+            for j, d in enumerate(dims):
+                vr = r * max(0.0, min(1.0, vals[j]))
+                dx = cx + vr * _math.cos(d["angle"])
+                dy = cy + vr * _math.sin(d["angle"])
+                svg_parts.append(
+                    f'<circle cx="{dx:.1f}" cy="{dy:.1f}" r="3" '
+                    f'fill="{color}" stroke="#fff" stroke-width="1" />'
+                )
+
+        # Labels at axis ends
+        label_offsets = [
+            (0, -18),   # G (top)
+            (12, 5),    # F (right)
+            (0, 20),    # 1-U (bottom)
+            (-12, 5),   # 1-C (left)
+        ]
+        for i, d in enumerate(dims):
+            ex = cx + r * _math.cos(d["angle"])
+            ey = cy + r * _math.sin(d["angle"])
+            ox, oy = label_offsets[i]
+            anchor = "middle"
+            if d["name"] == "F":
+                anchor = "start"
+            elif d["name"] == "1-C":
+                anchor = "end"
+            svg_parts.append(
+                f'<text x="{ex + ox:.0f}" y="{ey + oy:.0f}" '
+                f'text-anchor="{anchor}" font-size="12" font-weight="700" '
+                f'fill="#4a5568">{d["name"]}</text>'
+            )
+
+        # Legend (bottom-right corner), use short labels
+        legend_x = size + 24
+        legend_y = size - 10
+        legend_count = min(len(top_polys), 5)
+        base_model = models[0].get("model", "") if models else ""
+        for i in range(legend_count):
+            ly = legend_y - legend_count * 18 + i * 18
+            color = mcolors[i % len(mcolors)]
+            full_label = top_polys[i].get("config_label", "")
+            short_label = full_label.replace(base_model + " ", "").replace(" (", " ").replace(")", "")
+            if len(short_label) > 20:
+                short_label = short_label[:20]
+            svg_parts.append(
+                f'<rect x="{legend_x - 30}" y="{ly - 6}" width="12" height="12" '
+                f'fill="{color}" rx="2" />'
+            )
+            svg_parts.append(
+                f'<text x="{legend_x - 15}" y="{ly + 4}" font-size="10" '
+                f'fill="#718096">{short_label}</text>'
+            )
+
+        svg_parts.append("</svg>")
+        return "\n".join(svg_parts)
+
+    def _generate_share_insight(
+        self, summary: Dict[str, Any], lang_dict: Dict[str, str]
+    ) -> str:
+        """Generate a one-line AI insight from model comparison data."""
+        models = summary.get("models", [])
+        if len(models) < 2:
+            return ""
+        try:
+            from agent_trust_lab.llm import create_openai_client, get_api_key
+
+            api_key = get_api_key()
+            if not api_key:
+                return ""
+            client = create_openai_client(api_key=api_key)
+
+            lines = []
+            for m in models:
+                lines.append(
+                    f"{m.get('config_label', 'unknown')}: "
+                    f"G={m.get('avg_g', 0):.2f}, U={m.get('avg_u', 0):.2f}, "
+                    f"C={m.get('avg_c', 0):.2f}, F={m.get('avg_f', 0):.2f}"
+                )
+            data_block = "\n".join(lines)
+            prompt = (
+                f"You are an AI safety analyst. Below is a comparison of "
+                f"trustworthiness scores across model configurations.\n\n"
+                f"{data_block}\n\n"
+                f"In one sentence (max 40 words, {lang_dict.get('lang_code', 'English')}), "
+                f"highlight the most surprising or important finding. Include specific numbers. "
+                f"Make it quotable and suitable for a social media chart caption. "
+                f"Output only the sentence, no preamble."
+            )
+            response = client.chat.completions.create(
+                model="deepseek-v4-flash",
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.3,
+                max_tokens=80,
+            )
+            text = response.choices[0].message.content
+            return text.strip().strip('"').strip("'") if text else ""
+        except Exception:
+            return ""
+
+    def _render_share_card(
+        self,
+        summary: Dict[str, Any],
+        lang_dict: Dict[str, str],
+        generated_at: str,
+        total_traps: int,
+    ) -> str:
+        """Render the share card HTML block for social media sharing."""
+        if not summary.get("is_multi_model"):
+            return ""
+        models = summary.get("models", [])
+        if len(models) < 2:
+            return ""
+
+        # Champion: highest overall score
+        def _overall(m: Dict[str, Any]) -> float:
+            g = m.get("avg_g", 0)
+            f = m.get("avg_f", 0)
+            iu = 1.0 - m.get("avg_u", 0)
+            ic = 1.0 - m.get("avg_c", 0)
+            return (g + f + iu + ic) / 4.0
+
+        ranked = sorted(models, key=_overall, reverse=True)
+        champion = ranked[0] if ranked else None
+        if champion:
+            champion = dict(champion)
+            champion["overall"] = _overall(champion)
+
+        # Radar SVG
+        radar_svg = self._render_radar_svg(models, max_polygons=5)
+
+        # AI insight
+        insight_text = self._generate_share_insight(summary, lang_dict)
+
+        # Metric cards for top model (champion)
+        metric_cards: List[Dict[str, Any]] = []
+        if champion:
+            for key, label_suffix, color in [
+                ("avg_g", "G", "#38a169"),
+                ("avg_f", "F", "#3182ce"),
+                ("avg_u", "U", "#e53e3e"),
+                ("avg_c", "C", "#dd6b20"),
+            ]:
+                val = champion.get(key, 0)
+                pct = int(val * 100)
+                metric_cards.append({
+                    "label": label_suffix,
+                    "value": val,
+                    "pct": pct,
+                    "color": color,
+                })
+
+        # Ranking: all models by G score
+        g_ranked = sorted(models, key=lambda m: m.get("avg_g", 0), reverse=True)
+        ranking: List[Dict[str, Any]] = []
+        for i, m in enumerate(g_ranked):
+            g = m.get("avg_g", 0)
+            g_pct = int(g * 100)
+            rank = i + 1
+            if g >= 0.8:
+                color = "#38a169"
+                stars = "\u2605\u2605\u2605\u2605"
+            elif g >= 0.6:
+                color = "#d69e2e"
+                stars = "\u2605\u2605\u2605"
+            elif g >= 0.4:
+                color = "#dd6b20"
+                stars = "\u2605\u2605"
+            else:
+                color = "#e53e3e"
+                stars = "\u2605"
+            ranking.append({
+                "rank": rank,
+                "config_label": m.get("config_label", ""),
+                "avg_g": g,
+                "g_pct": g_pct,
+                "color": color,
+                "stars": stars,
+            })
+
+        t = Template(SHARE_CARD_TEMPLATE)
+        return t.render(
+            lang=lang_dict,
+            models=models,
+            total_traps=total_traps,
+            champion=champion,
+            radar_svg=radar_svg,
+            insight_text=insight_text,
+            metric_cards=metric_cards,
+            ranking=ranking,
+            generated_at=generated_at,
+        )
+
     def generate(
         self,
         data: Dict[str, Any],
         output_path: Optional[str] = None,
         calibration: Optional[Dict[str, Any]] = None,
         lang: str = "en",
+        lang_other_url: str = "",
     ) -> str:
         """Generate an HTML report from evaluation result data.
 
@@ -701,6 +1149,7 @@ class ReportGenerator:
             output_path: If provided, writes HTML to this file path.
             calibration: Optional calibration profile dict for showing calibrated scores.
             lang: Language code (en/zh).
+            lang_other_url: Optional URL to the other language version for the lang switch.
 
         Returns:
             The complete HTML string.
@@ -714,8 +1163,14 @@ class ReportGenerator:
         summary = self._compute_summary(raw_results, calibration=calibration, data=data)
         generated_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
 
+        share_card_html = self._render_share_card(
+            summary, lang_dict, generated_at, summary.get("total_traps", 0)
+        )
+
+        lang_switch_html = self._render_lang_switch(lang_dict, lang, lang_other_url)
+
         html = self._template.render(
-            css=CSS,
+            css=CSS + ("\n" + SHARE_CARD_CSS if share_card_html else ""),
             lang=lang_dict,
             lang_code=lang,
             config=config,
@@ -724,6 +1179,8 @@ class ReportGenerator:
             traps=traps,
             generated_at=generated_at,
             legend_html=self._render_legend(lang_dict, summary),
+            share_card_html=share_card_html,
+            lang_switch_html=lang_switch_html,
         )
 
         if output_path:
@@ -732,6 +1189,48 @@ class ReportGenerator:
             logger.info("Report written to %s", output_path)
 
         return html
+
+    def generate_both(
+        self,
+        data: Dict[str, Any],
+        output_dir: str,
+        base_name: str = "comparison",
+        calibration: Optional[Dict[str, Any]] = None,
+    ) -> tuple:
+        """Generate both English and Chinese HTML reports with cross-references.
+
+        Args:
+            data: Merged evaluation data dict.
+            output_dir: Directory for output files.
+            base_name: Base filename (e.g. "comparison" → "comparison.html", "comparison_zh.html").
+            calibration: Optional calibration profile dict.
+
+        Returns:
+            Tuple of (en_path, zh_path).
+        """
+        import os as _os
+
+        en_path = _os.path.join(output_dir, f"{base_name}.html")
+        zh_path = _os.path.join(output_dir, f"{base_name}_zh.html")
+        en_basename = _os.path.basename(en_path)
+        zh_basename = _os.path.basename(zh_path)
+
+        self.generate(
+            data,
+            output_path=en_path,
+            calibration=calibration,
+            lang="en",
+            lang_other_url=zh_basename,
+        )
+        self.generate(
+            data,
+            output_path=zh_path,
+            calibration=calibration,
+            lang="zh",
+            lang_other_url=en_basename,
+        )
+        logger.info("Bilingual reports: %s, %s", en_path, zh_path)
+        return en_path, zh_path
 
     def generate_markdown(
         self,

@@ -2,7 +2,7 @@
 
 import os
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, List, Optional
 
 import typer
 from rich.console import Console
@@ -42,7 +42,7 @@ def _get_trap_manager():
 def _run_evaluation(
     config_params: dict,
     trap_file: Optional[str] = None,
-    trap_id: Optional[str] = None,
+    trap_ids: Optional[List[str]] = None,
     category: Optional[str] = None,
     mutate: bool = False,
     seed: Optional[int] = None,
@@ -65,9 +65,9 @@ def _run_evaluation(
             raise typer.Exit(code=1)
         orchestrator = Orchestrator(config)
         results = orchestrator.run_traps(trap_ids=[trap.trap_id], mutate=mutate, mutation_seed=seed)
-    elif trap_id:
+    elif trap_ids:
         orchestrator = Orchestrator(config)
-        results = orchestrator.run_traps(trap_ids=[trap_id], mutate=mutate, mutation_seed=seed)
+        results = orchestrator.run_traps(trap_ids=trap_ids, mutate=mutate, mutation_seed=seed)
     elif category:
         orchestrator = Orchestrator(config)
         results = orchestrator.run_traps(
@@ -270,8 +270,8 @@ def run(
     trap_file: Optional[str] = typer.Option(
         None, "--trap-file", help="Path to trap YAML file (loads single trap)"
     ),
-    trap_id: Optional[str] = typer.Option(
-        None, "--trap-id", help="Trap ID to run (from trap library)"
+    trap_id: Optional[List[str]] = typer.Option(
+        None, "--trap-id", "-t", help="Trap ID to run (from trap library, can be repeated)"
     ),
     agent_type: str = typer.Option("langchain", "--agent-type", help="Agent harness type"),
     model: str = typer.Option("deepseek-v4-flash", "--model", help="LLM model to use"),
@@ -334,7 +334,7 @@ def run(
             "reasoning_effort": effort,
         },
         trap_file=trap_file,
-        trap_id=trap_id,
+        trap_ids=trap_id,
         category=category,
         mutate=mutate,
         seed=seed,
@@ -353,8 +353,8 @@ def run_code(
     trap_file: Optional[str] = typer.Option(
         None, "--trap-file", help="Path to trap YAML file (loads single trap)"
     ),
-    trap_id: Optional[str] = typer.Option(
-        None, "--trap-id", help="Trap ID to run (from trap library)"
+    trap_id: Optional[List[str]] = typer.Option(
+        None, "--trap-id", "-t", help="Trap ID to run (from trap library, can be repeated)"
     ),
     agent_type: str = typer.Option("codex", "--agent-type", help="Agent harness type"),
     model: str = typer.Option("deepseek-v4-flash", "--model", help="LLM model to use"),
@@ -406,7 +406,7 @@ def run_code(
             "codebase_path": codebase,
         },
         trap_file=trap_file,
-        trap_id=trap_id,
+        trap_ids=trap_id,
         category="code_agent",
         mutate=mutate,
         seed=seed,
@@ -639,11 +639,11 @@ def report(
 
     Use --calibration-profile to apply Platt-scaled calibrated scores.
     Use --format markdown for CI/CD-friendly plain text output.
-    Use --lang zh for Chinese reports.
+    Use --lang zh for Chinese reports. Use --lang both for bilingual output.
     """
     lang = lang.lower()
-    if lang not in ("en", "zh", "zh-cn", "zh_cn"):
-        console.print(f"[red]Invalid language: {lang}. Use 'en' or 'zh'.[/red]")
+    if lang not in ("en", "zh", "both", "zh-cn", "zh_cn"):
+        console.print(f"[red]Invalid language: {lang}. Use 'en', 'zh', or 'both'.[/red]")
         raise typer.Exit(code=1)
     if lang.startswith("zh"):
         lang = "zh"
@@ -686,6 +686,23 @@ def report(
                 f"[dim]Applying calibration profile '{calibration_profile}' "
                 f"(κ={profile.kappa_gsar:.3f})[/dim]"
             )
+
+    if lang == "both":
+        if format_lower in ("markdown", "md"):
+            console.print("[red]Bilingual mode (--lang both) only supports HTML format.[/red]")
+            raise typer.Exit(code=1)
+        base_name = path.stem
+        output_dir = str(path.parent)
+        en_path, zh_path = generator.generate_both(
+            data, output_dir, base_name, calibration=cal_profile_data
+        )
+        console.print("[green]Bilingual reports generated:[/green]")
+        console.print(f"  EN: {en_path}")
+        console.print(f"  ZH: {zh_path}")
+        if open_browser:
+            import webbrowser
+            webbrowser.open(f"file://{os.path.abspath(en_path)}")
+        return
 
     if format_lower in ("markdown", "md"):
         generator.generate_markdown(
@@ -752,7 +769,9 @@ def batch(
     if not batch_config.trap_library_path:
         batch_config.trap_library_path = str(_get_traps_data_dir())
 
-    if batch_config.report_lang.startswith("zh"):
+    if batch_config.report_lang == "both":
+        pass
+    elif batch_config.report_lang.startswith("zh"):
         batch_config.report_lang = "zh"
 
     fmt = batch_config.report_format
