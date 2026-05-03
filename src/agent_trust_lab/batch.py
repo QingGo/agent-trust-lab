@@ -50,6 +50,7 @@ class BatchConfig:
     report_format: str = "html"
     report_lang: str = "en"
     report_open: bool = False
+    report_url: str = ""
     calibration_profile: Optional[str] = None
     timeout: int = 120
 
@@ -119,6 +120,7 @@ def parse_batch_yaml(yaml_path: str) -> BatchConfig:
         report_format=str(report_cfg.get("format", "html")).lower(),
         report_lang=str(report_cfg.get("lang", "en")).lower(),
         report_open=bool(report_cfg.get("open", False)),
+        report_url=str(report_cfg.get("url", "")),
         calibration_profile=common.get("calibration_profile"),
         timeout=int(common.get("timeout", 120)),
     )
@@ -240,7 +242,10 @@ def run_batch(batch_config: BatchConfig) -> Dict[str, Any]:
         )
     else:
         if batch_config.report_lang == "both":
-            generator.generate_both(merged, batch_config.output_dir, "comparison", cal_data)
+            generator.generate_both(
+                merged, batch_config.output_dir, "comparison", cal_data,
+                report_url=batch_config.report_url,
+            )
             report_path = os.path.join(batch_config.output_dir, "comparison.html")
         else:
             report_path = os.path.join(batch_config.output_dir, "comparison.html")
@@ -249,6 +254,7 @@ def run_batch(batch_config: BatchConfig) -> Dict[str, Any]:
                 output_path=report_path,
                 calibration=cal_data,
                 lang=batch_config.report_lang,
+                report_url=batch_config.report_url,
             )
     logger.info("Comparison report saved to %s", report_path)
 

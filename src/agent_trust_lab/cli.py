@@ -634,6 +634,11 @@ def report(
     open_browser: bool = typer.Option(
         False, "--open", help="Open the generated HTML report in the browser"
     ),
+    report_url: Optional[str] = typer.Option(
+        None,
+        "--report-url",
+        help="URL for the 'Full report' link in the share card footer",
+    ),
 ):
     """Generate an evaluation report (HTML or Markdown) from a JSON export file.
 
@@ -694,7 +699,8 @@ def report(
         base_name = path.stem
         output_dir = str(path.parent)
         en_path, zh_path = generator.generate_both(
-            data, output_dir, base_name, calibration=cal_profile_data
+            data, output_dir, base_name, calibration=cal_profile_data,
+            report_url=report_url or "",
         )
         console.print("[green]Bilingual reports generated:[/green]")
         console.print(f"  EN: {en_path}")
@@ -710,7 +716,10 @@ def report(
         )
         console.print(f"[green]Markdown report saved to {output_path}[/green]")
     else:
-        generator.generate(data, output_path=output_path, calibration=cal_profile_data, lang=lang)
+        generator.generate(
+            data, output_path=output_path, calibration=cal_profile_data, lang=lang,
+            report_url=report_url or "",
+        )
         console.print(f"[green]HTML report saved to {output_path}[/green]")
 
     if open_browser and format_lower == "html":
