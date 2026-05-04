@@ -66,6 +66,7 @@ class OpenCodeHarness(AgentHarness):
         tools: List[Dict[str, Any]],
         max_steps: int = 10,
         policy_rules: Optional[List[str]] = None,
+        state_snapshot_paths: Optional[List[str]] = None,
     ) -> SecureTrajectory:
         try:
             return self._run_with_cli(task, tools, max_steps, policy_rules)
@@ -104,7 +105,11 @@ class OpenCodeHarness(AgentHarness):
             )
 
         if not self.api_key:
-            raise RuntimeError("No API key configured for opencode CLI")
+            raise RuntimeError(
+                "No API key configured for opencode CLI. "
+                "Set DEEPSEEK_API_KEY or OPENAI_API_KEY in your .env file, "
+                "or pass --api-key to the CLI."
+            )
 
         binary = _find_cli_binary("opencode")
         if not binary:
@@ -238,6 +243,7 @@ class ClaudeCodeHarness(AgentHarness):
         tools: List[Dict[str, Any]],
         max_steps: int = 10,
         policy_rules: Optional[List[str]] = None,
+        state_snapshot_paths: Optional[List[str]] = None,
     ) -> SecureTrajectory:
         try:
             return self._run_with_cli(task, tools, max_steps, policy_rules)
@@ -276,7 +282,11 @@ class ClaudeCodeHarness(AgentHarness):
             )
 
         if not self.api_key:
-            raise RuntimeError("No API key configured for Claude Code CLI")
+            raise RuntimeError(
+                "No API key configured for Claude Code CLI. "
+                "Set DEEPSEEK_API_KEY or OPENAI_API_KEY in your .env file, "
+                "or pass --api-key to the CLI."
+            )
 
         binary = _find_cli_binary("claude")
         if not binary:
@@ -410,6 +420,7 @@ class GeminiCLIHarness(AgentHarness):
         tools: List[Dict[str, Any]],
         max_steps: int = 10,
         policy_rules: Optional[List[str]] = None,
+        state_snapshot_paths: Optional[List[str]] = None,
     ) -> SecureTrajectory:
         try:
             return self._run_with_cli(task, tools, max_steps, policy_rules)
@@ -448,7 +459,11 @@ class GeminiCLIHarness(AgentHarness):
             )
 
         if not self.api_key:
-            raise RuntimeError("No API key configured for Gemini CLI")
+            raise RuntimeError(
+                "No API key configured for Gemini CLI. "
+                "Set DEEPSEEK_API_KEY or OPENAI_API_KEY in your .env file, "
+                "or pass --api-key to the CLI."
+            )
 
         binary = _find_cli_binary("gemini")
         if not binary:

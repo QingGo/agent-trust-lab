@@ -17,8 +17,10 @@ from agent_trust_lab.audit.rules import (
     PreExecConfirmationRule,
     SourceVerificationRule,
     StateConsistencyRule,
+    StateIntegrityRule,
     StepCompletenessRule,
     ToolAuthorizationRule,
+    ToolCallAssertionRule,
     UserInfoDisclosureRule,
 )
 from agent_trust_lab.models.report import ComplianceReport
@@ -297,6 +299,65 @@ class TestBenignRefusalRule:
         assert rule.severity == RuleSeverity.MEDIUM
 
 
+class TestToolCallAssertionRule:
+    def test_pass_no_violations(self, clean_trajectory):
+        rule = ToolCallAssertionRule()
+        result = rule.check(clean_trajectory.steps, clean_trajectory.security_events)
+        assert result == DimensionStatus.PASS
+
+    def test_fail_on_tool_call_violation(self):
+        trajectory = make_trajectory(
+            events=[make_event("tool_call_violation", "forbidden tool was called")]
+        )
+        rule = ToolCallAssertionRule()
+        result = rule.check(trajectory.steps, trajectory.security_events)
+        assert result == DimensionStatus.FAIL
+
+    def test_warn_on_tool_call_missing(self):
+        trajectory = make_trajectory(
+            events=[make_event("tool_call_missing", "expected tool was not called")]
+        )
+        rule = ToolCallAssertionRule()
+        result = rule.check(trajectory.steps, trajectory.security_events)
+        assert result == DimensionStatus.WARN
+
+    def test_fail_takes_priority_over_warn(self):
+        trajectory = make_trajectory(
+            events=[
+                make_event("tool_call_missing", "missing"),
+                make_event("tool_call_violation", "violation"),
+            ]
+        )
+        rule = ToolCallAssertionRule()
+        result = rule.check(trajectory.steps, trajectory.security_events)
+        assert result == DimensionStatus.FAIL
+
+    def test_defaults(self):
+        rule = ToolCallAssertionRule()
+        assert rule.dimension == RuleDimension.TOOL_CALL_ASSERTION
+        assert rule.severity == RuleSeverity.CRITICAL
+
+
+class TestStateIntegrityRule:
+    def test_pass_no_diffs(self, clean_trajectory):
+        rule = StateIntegrityRule()
+        result = rule.check(clean_trajectory.steps, clean_trajectory.security_events)
+        assert result == DimensionStatus.PASS
+
+    def test_fail_on_state_diff_detected(self):
+        trajectory = make_trajectory(
+            events=[make_event("state_diff_detected", "file hash changed")]
+        )
+        rule = StateIntegrityRule()
+        result = rule.check(trajectory.steps, trajectory.security_events)
+        assert result == DimensionStatus.FAIL
+
+    def test_defaults(self):
+        rule = StateIntegrityRule()
+        assert rule.dimension == RuleDimension.STATE_INTEGRITY
+        assert rule.severity == RuleSeverity.CRITICAL
+
+
 class TestGeneralAgentRuleBase:
     def test_check_raises_not_implemented(self):
         rule = GeneralAgentRule(
@@ -320,7 +381,7 @@ class TestGeneralAgentRuleBase:
 class TestRuleSet:
     def test_default_general_rules_count(self):
         rs = RuleSet()
-        assert len(rs.general_rules) == 6
+        assert len(rs.general_rules) == 8
 
     def test_default_code_rules_count(self):
         rs = RuleSet()
@@ -329,14 +390,14 @@ class TestRuleSet:
     def test_all_rules_general_agent(self):
         rs = RuleSet()
         rules = rs.all_rules(is_code_agent=False)
-        assert len(rules) == 6
+        assert len(rules) == 8
         for r in rules:
             assert isinstance(r, GeneralAgentRule)
 
     def test_all_rules_code_agent(self):
         rs = RuleSet()
         rules = rs.all_rules(is_code_agent=True)
-        assert len(rules) == 10
+        assert len(rules) == 12
 
     def test_all_rules_general_agent_has_no_code_rules(self):
         rs = RuleSet()
@@ -374,11 +435,13 @@ class TestPAEAuditor:
         report = auditor.audit(clean_trajectory)
         for dim in [
             "tool_authorization",
+            "tool_call_assertion",
             "source_verification",
             "user_info_disclosure",
             "step_completeness",
             "state_consistency",
             "pre_execution_confirmation",
+            "state_integrity",
         ]:
             assert dim in report.dimensions
             assert report.dimensions[dim] == "pass"
@@ -390,7 +453,7 @@ class TestPAEAuditor:
         assert "execution_side_effect_audit" in report.dimensions
         assert "code_output_executability" in report.dimensions
         assert "benign_refusal_rate" in report.dimensions
-        assert len(report.dimensions) == 10
+        assert len(report.dimensions) == 12
 
     def test_audit_critical_failure_creates_evidence(self):
         trajectory = make_trajectory(

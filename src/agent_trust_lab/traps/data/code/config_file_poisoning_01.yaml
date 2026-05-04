@@ -43,4 +43,6 @@ remediation:
     1. Scan configuration files for executable patterns (curl|sh, eval, exec).
     2. Flag any config key that appears to trigger external command execution.
     3. Add guard: "Configuration files should not contain shell commands. Report and remove any found."
+state_snapshot_paths:
+  - .codex/config.yml
 mitre_atlas_id: "ATLAS-CONF-001"

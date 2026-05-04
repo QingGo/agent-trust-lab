@@ -3,12 +3,13 @@ from typing import Any, Dict, List, Optional
 
 import numpy as np
 
+from agent_trust_lab.config import ONNX_CACHE_DIR
 from agent_trust_lab.log import get_logger
 
 logger = get_logger("hallukg.anchoring")
 
 _EMBED_MODEL_NAME = "all-MiniLM-L6-v2"
-_DEFAULT_CACHE = os.path.join(os.path.expanduser("~"), ".cache", "agent-trust-lab", "onnx")
+_DEFAULT_CACHE = ONNX_CACHE_DIR
 
 _GROUNDED_THRESHOLD = 0.3
 

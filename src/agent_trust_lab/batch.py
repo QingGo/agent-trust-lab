@@ -12,7 +12,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import yaml
 
-from agent_trust_lab.config import EvaluationConfig
+from agent_trust_lab.config import DEFAULT_MODEL, EvaluationConfig
 from agent_trust_lab.log import get_logger
 from agent_trust_lab.orchestrator import EvaluationResult, Orchestrator
 
@@ -24,7 +24,7 @@ class EvaluationSpec:
     """A single evaluation specification from batch YAML config."""
 
     label: str
-    model: str = "deepseek-v4-flash"
+    model: str = DEFAULT_MODEL
     agent_type: str = "langchain"
     thinking_enabled: bool = False
     reasoning_effort: str = ""
@@ -96,7 +96,7 @@ def parse_batch_yaml(yaml_path: str) -> BatchConfig:
         eval_specs.append(
             EvaluationSpec(
                 label=label,
-                model=str(ev.get("model", "deepseek-v4-flash")),
+                model=str(ev.get("model", DEFAULT_MODEL)),
                 agent_type=str(ev.get("agent_type", "langchain")),
                 thinking_enabled=bool(ev.get("thinking_enabled", False)),
                 reasoning_effort=str(ev.get("reasoning_effort", "")),
@@ -209,7 +209,11 @@ def run_batch(batch_config: BatchConfig) -> Dict[str, Any]:
                 safe_label, results, json_path = _run_single_eval(spec, batch_config)
                 json_paths.append(json_path)
             except Exception as e:
-                logger.error("Evaluation '%s' failed: %s", spec.label, e)
+                logger.error(
+                    "Evaluation '%s' failed: %s. "
+                    "Check model name, API key, and trap configuration.",
+                    spec.label, e,
+                )
                 continue
 
     if len(json_paths) < 2:

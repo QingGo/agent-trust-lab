@@ -44,6 +44,7 @@ class DockerSandbox(AgentHarness):
         tools: List[Dict[str, Any]],
         max_steps: int = 10,
         policy_rules: Optional[List[str]] = None,
+        state_snapshot_paths: Optional[List[str]] = None,
     ) -> SecureTrajectory:
         steps: List[TrajectoryStep] = []
         security_events: List[SecurityEvent] = []
@@ -86,9 +87,14 @@ class DockerSandbox(AgentHarness):
                 security_events=security_events,
                 policy_rules_applied=policy_rules_applied,
                 actual_violations=actual_violations,
+                state_snapshot_paths=state_snapshot_paths,
             )
         except Exception as e:
-            logger.warning("Container execution failed: %s", e)
+            logger.warning(
+                "Container execution failed (falling back to stub): %s. "
+                "Check Docker daemon status and container limits.",
+                e,
+            )
             return self._fallback_stub(
                 task=task,
                 steps=steps,
@@ -106,6 +112,7 @@ class DockerSandbox(AgentHarness):
         security_events: List[SecurityEvent],
         policy_rules_applied: List[str],
         actual_violations: List[str],
+        state_snapshot_paths: Optional[List[str]] = None,
     ) -> SecureTrajectory:
         from agent_trust_lab.sandbox.image import SANDBOX_LABEL, ImageManager, get_docker_client
 
@@ -130,6 +137,10 @@ class DockerSandbox(AgentHarness):
                 metadata={"task_length": len(task)},
             )
         )
+
+        pre_snapshot: dict[str, str] = {}
+        if state_snapshot_paths:
+            pre_snapshot = self._take_state_snapshot(client, state_snapshot_paths)
 
         security_opts = {
             "read_only": True,
@@ -174,13 +185,28 @@ class DockerSandbox(AgentHarness):
                 )
             )
 
+            if pre_snapshot:
+                for path, pre_hash in pre_snapshot.items():
+                    post_hash = self._get_file_hash(client, path)
+                    if post_hash is not None and post_hash != pre_hash:
+                        security_events.append(
+                            SecurityEvent(
+                                event_type="state_diff_detected",
+                                description=(
+                                    f"File {path} hash changed: "
+                                    f"{pre_hash[:16]}... -> {post_hash[:16]}..."
+                                ),
+                                step_index=len(steps) - 1,
+                            )
+                        )
+
         except Exception as e:
             error_msg = str(e)[:500]
             if container:
                 try:
                     container.kill()
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.warning("Failed to kill sandbox container: %s", e)
             actual_violations.append(error_msg)
             steps.append(
                 TrajectoryStep(
@@ -202,6 +228,42 @@ class DockerSandbox(AgentHarness):
                 "stub": False,
             },
         )
+
+    @staticmethod
+    def _get_file_hash(client: Any, path: str) -> Optional[str]:
+        from agent_trust_lab.sandbox.image import SANDBOX_LABEL, ImageManager
+
+        img_mgr = ImageManager(client)
+        if not img_mgr.ensure_image("docker.m.daocloud.io/library/busybox:latest"):
+            return None
+        try:
+            container = client.containers.run(
+                image="docker.m.daocloud.io/library/busybox:latest",
+                command=["sha256sum", path],
+                detach=True,
+                auto_remove=True,
+                read_only=True,
+                network_disabled=True,
+                mem_limit="32m",
+                labels={SANDBOX_LABEL: ""},
+            )
+            container.wait(timeout=10)
+            output = container.logs(stdout=True, stderr=True).decode("utf-8", errors="replace")
+            parts = output.strip().split()
+            if parts:
+                return parts[0]
+        except Exception as e:
+            logger.warning("State snapshot hash failed for %s: %s", path, e)
+        return None
+
+    @staticmethod
+    def _take_state_snapshot(client: Any, paths: List[str]) -> Dict[str, str]:
+        snap: Dict[str, str] = {}
+        for path in paths:
+            h = DockerSandbox._get_file_hash(client, path)  # type: ignore[reportAttributeAccessIssue]
+            if h:
+                snap[path] = h
+        return snap
 
     def _fallback_stub(
         self,
@@ -263,6 +325,7 @@ class DryRunSandbox(AgentHarness):
         tools: List[Dict[str, Any]],
         max_steps: int = 10,
         policy_rules: Optional[List[str]] = None,
+        state_snapshot_paths: Optional[List[str]] = None,
     ) -> SecureTrajectory:
         steps: List[TrajectoryStep] = []
         security_events: List[SecurityEvent] = []

@@ -7,6 +7,7 @@ from typing import Any, Dict, List, Optional
 
 from jinja2 import Template
 
+from agent_trust_lab.config import DEFAULT_MODEL
 from agent_trust_lab.log import get_logger
 
 logger = get_logger("report.generator")
@@ -1101,7 +1102,7 @@ class ReportGenerator:
                 "ZH: <Chinese insight>\n"
             )
             response = client.chat.completions.create(
-                model="deepseek-v4-flash",
+                model=DEFAULT_MODEL,
                 messages=[{"role": "user", "content": prompt}],
                 temperature=0.3,
                 max_tokens=400,

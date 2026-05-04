@@ -1,5 +1,6 @@
 """CLI entry point for agent-trust-lab."""
 
+import json
 import os
 from pathlib import Path
 from typing import Any, List, Optional
@@ -8,6 +9,8 @@ import typer
 from rich.console import Console
 from rich.syntax import Syntax
 from rich.table import Table
+
+from agent_trust_lab.config import DEFAULT_MODEL
 
 app = typer.Typer(
     name="agent-trust-lab",
@@ -39,6 +42,46 @@ def _get_trap_manager():
     return TrapManager(str(_get_traps_data_dir()))
 
 
+def _load_config_file(path: str) -> dict:
+    """Load evaluation config from a YAML or JSON file.
+
+    Returns a dict of field_name -> value suitable for EvaluationConfig.
+    CLI flags override config file values.
+    """
+    import dataclasses
+
+    file_path = Path(path)
+    if not file_path.is_file():
+        raise typer.BadParameter(f"Config file not found: {path}")
+
+    with open(file_path, "r", encoding="utf-8") as f:
+        if file_path.suffix in (".yaml", ".yml"):
+            import yaml
+
+            data = yaml.safe_load(f)
+        elif file_path.suffix == ".json":
+            data = json.load(f)
+        else:
+            raise typer.BadParameter(
+                f"Unsupported config file format: {file_path.suffix}. Use .yaml, .yml, or .json"
+            )
+
+    if not isinstance(data, dict):
+        raise typer.BadParameter("Config file must contain a mapping (dict) at the top level")
+
+    from agent_trust_lab.config import EvaluationConfig
+
+    valid_fields = {f.name for f in dataclasses.fields(EvaluationConfig)}
+    result = {}
+    for key, value in data.items():
+        if key in valid_fields:
+            result[key] = value
+        else:
+            console.print(f"[yellow]Warning: ignoring unknown config field '{key}'[/yellow]")
+
+    return result
+
+
 def _run_evaluation(
     config_params: dict,
     trap_file: Optional[str] = None,
@@ -61,23 +104,69 @@ def _run_evaluation(
     if trap_file:
         trap = TrapManager._load_single_file(trap_file)
         if trap is None:
-            console.print(f"[red]Failed to load trap from {trap_file}[/red]")
+            console.print(
+                f"[red]Failed to load trap from {trap_file}. "
+                "Check that the file is valid YAML with required fields "
+                "(trap_id, trap_type, base_task).[/red]"
+            )
             raise typer.Exit(code=1)
         orchestrator = Orchestrator(config)
         results = orchestrator.run_traps(trap_ids=[trap.trap_id], mutate=mutate, mutation_seed=seed)
     elif trap_ids:
         orchestrator = Orchestrator(config)
-        results = orchestrator.run_traps(trap_ids=trap_ids, mutate=mutate, mutation_seed=seed)
+        results = _run_with_progress(
+            orchestrator, trap_ids=trap_ids, mutate=mutate, seed=seed
+        )
     elif category:
         orchestrator = Orchestrator(config)
-        results = orchestrator.run_traps(
-            category=category, mutate=mutate, mutation_seed=seed, limit=limit
+        results = _run_with_progress(
+            orchestrator, category=category, mutate=mutate, seed=seed, limit=limit
         )
     else:
         console.print("[yellow]Specify --trap-file, --trap-id, or --category.[/yellow]")
         raise typer.Exit(code=1)
 
     return orchestrator, results
+
+
+def _run_with_progress(
+    orchestrator: Any,
+    trap_ids: Optional[List[str]] = None,
+    category: Optional[str] = None,
+    mutate: bool = False,
+    seed: Optional[int] = None,
+    limit: Optional[int] = None,
+) -> Any:
+    from rich.progress import BarColumn, Progress, TextColumn, TimeRemainingColumn
+
+    with Progress(
+        TextColumn("[progress.description]{task.description}"),
+        BarColumn(),
+        TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
+        TimeRemainingColumn(),
+        console=console,
+    ) as progress:
+        task = progress.add_task("[cyan]Running traps...", total=None)
+        results: list = []
+
+        def on_progress(completed: int, total: int) -> None:
+            if progress.tasks[task].total != total:
+                progress.update(task, total=total)
+            progress.update(
+                task, completed=completed,
+                description=f"[cyan]Running traps ({completed}/{total})",
+            )
+
+        results = orchestrator.run_traps(
+            trap_ids=trap_ids,
+            category=category,
+            mutate=mutate,
+            mutation_seed=seed,
+            limit=limit,
+            progress_callback=on_progress,
+        )
+        progress.update(task, completed=progress.tasks[task].total or 1)
+    return results
 
 
 @app.command()
@@ -158,7 +247,10 @@ def show_trap(
     trap = mgr.get_trap(trap_id)
 
     if trap is None:
-        console.print(f"[red]Trap '{trap_id}' not found.[/red]")
+        console.print(
+            f"[red]Trap '{trap_id}' not found. "
+            "Run 'agent-trust-lab list-traps' to see available traps.[/red]"
+        )
         raise typer.Exit(code=1)
 
     if raw:
@@ -256,7 +348,19 @@ def validate_traps():
     for trap_id in [t.trap_id for t in mgr.load_traps(include_controls=True)]:
         trap = mgr.get_trap(trap_id)
         if not trap or not trap.trap_id or not trap.trap_type or not trap.base_task:
-            console.print(f"  [red]FAIL: {trap_id} - missing required fields[/red]")
+            missing = []
+            if not trap:
+                missing.append("entire trap")
+            else:
+                if not trap.trap_id:
+                    missing.append("trap_id")
+                if not trap.trap_type:
+                    missing.append("trap_type")
+                if not trap.base_task:
+                    missing.append("base_task")
+            console.print(
+                f"  [red]FAIL: {trap_id} - missing required fields: {', '.join(missing)}[/red]"
+            )
             all_valid = False
 
     if all_valid:
@@ -274,7 +378,7 @@ def run(
         None, "--trap-id", "-t", help="Trap ID to run (from trap library, can be repeated)"
     ),
     agent_type: str = typer.Option("langchain", "--agent-type", help="Agent harness type"),
-    model: str = typer.Option("deepseek-v4-flash", "--model", help="LLM model to use"),
+    model: str = typer.Option(DEFAULT_MODEL, "--model", help="LLM model to use"),
     base_url: Optional[str] = typer.Option(
         None, "--base-url", help="LLM API base URL (default: https://api.deepseek.com)"
     ),
@@ -302,6 +406,18 @@ def run(
     skip_hallukg: bool = typer.Option(
         False, "--skip-hallukg", help="Skip hallucination evaluation (cost control)"
     ),
+    timeout: int = typer.Option(120, "--timeout", help="Max execution time per trap (seconds)"),
+    parallel: int = typer.Option(1, "--parallel", help="Number of traps to run in parallel"),
+    max_steps: int = typer.Option(10, "--max-steps", help="Max ReAct steps per agent run"),
+    output_dir: str = typer.Option(
+        "./results/", "--output-dir", help="Output directory for results"
+    ),
+    grounded_threshold: float = typer.Option(
+        0.3, "--grounded-threshold", help="HalluKG anchoring similarity threshold (0-1)"
+    ),
+    nli_weight: float = typer.Option(
+        0.5, "--nli-weight", help="Faithfulness NLI neutral weight (0-1)"
+    ),
     thinking: bool = typer.Option(
         False, "--thinking", help="Enable DeepSeek thinking mode (reasoning chain)"
     ),
@@ -314,25 +430,36 @@ def run(
     log_file: Optional[str] = typer.Option(
         None, "--log-file", help="Write logs to file instead of stderr"
     ),
+    config_file: Optional[str] = typer.Option(
+        None, "--config-file", help="YAML/JSON config file (CLI flags override file values)"
+    ),
 ):
     """Run general agent evaluation against traps."""
     from agent_trust_lab.log import cli_verbosity_to_level, setup_logging
 
     setup_logging(level=cli_verbosity_to_level(verbose), log_file=log_file)
 
+    config_params = _load_config_file(config_file) if config_file else {}
+    config_params.update({
+        "agent_type": agent_type,
+        "model": model,
+        "base_url": base_url or "",
+        "sandbox": sandbox,
+        "sandbox_image": sandbox_image or "",
+        "sandbox_network": sandbox_network,
+        "docker_host": docker_host or "",
+        "skip_hallukg": skip_hallukg,
+        "thinking_enabled": thinking,
+        "reasoning_effort": effort,
+        "timeout": timeout,
+        "parallel": parallel,
+        "max_steps": max_steps,
+        "output_dir": output_dir,
+        "grounded_threshold": grounded_threshold,
+        "nli_neutral_weight": nli_weight,
+    })
     orchestrator, results = _run_evaluation(
-        config_params={
-            "agent_type": agent_type,
-            "model": model,
-            "base_url": base_url or "",
-            "sandbox": sandbox,
-            "sandbox_image": sandbox_image or "",
-            "sandbox_network": sandbox_network,
-            "docker_host": docker_host or "",
-            "skip_hallukg": skip_hallukg,
-            "thinking_enabled": thinking,
-            "reasoning_effort": effort,
-        },
+        config_params=config_params,
         trap_file=trap_file,
         trap_ids=trap_id,
         category=category,
@@ -357,7 +484,7 @@ def run_code(
         None, "--trap-id", "-t", help="Trap ID to run (from trap library, can be repeated)"
     ),
     agent_type: str = typer.Option("codex", "--agent-type", help="Agent harness type"),
-    model: str = typer.Option("deepseek-v4-flash", "--model", help="LLM model to use"),
+    model: str = typer.Option(DEFAULT_MODEL, "--model", help="LLM model to use"),
     base_url: Optional[str] = typer.Option(
         None, "--base-url", help="LLM API base URL (default: https://api.deepseek.com)"
     ),
@@ -381,11 +508,26 @@ def run_code(
     skip_hallukg: bool = typer.Option(
         False, "--skip-hallukg", help="Skip hallucination evaluation (cost control)"
     ),
+    timeout: int = typer.Option(120, "--timeout", help="Max execution time per trap (seconds)"),
+    parallel: int = typer.Option(1, "--parallel", help="Number of traps to run in parallel"),
+    max_steps: int = typer.Option(10, "--max-steps", help="Max ReAct steps per agent run"),
+    output_dir: str = typer.Option(
+        "./results/", "--output-dir", help="Output directory for results"
+    ),
+    grounded_threshold: float = typer.Option(
+        0.3, "--grounded-threshold", help="HalluKG anchoring similarity threshold (0-1)"
+    ),
+    nli_weight: float = typer.Option(
+        0.5, "--nli-weight", help="Faithfulness NLI neutral weight (0-1)"
+    ),
     verbose: int = typer.Option(
         0, "--verbose", "-v", count=True, help="Increase verbosity (-v for INFO, -vv for DEBUG)"
     ),
     log_file: Optional[str] = typer.Option(
         None, "--log-file", help="Write logs to file instead of stderr"
+    ),
+    config_file: Optional[str] = typer.Option(
+        None, "--config-file", help="YAML/JSON config file (CLI flags override file values)"
     ),
 ):
     """Run code agent evaluation against traps."""
@@ -393,18 +535,26 @@ def run_code(
 
     setup_logging(level=cli_verbosity_to_level(verbose), log_file=log_file)
 
+    config_params = _load_config_file(config_file) if config_file else {}
+    config_params.update({
+        "agent_type": agent_type,
+        "model": model,
+        "base_url": base_url or "",
+        "sandbox": sandbox,
+        "sandbox_image": sandbox_image or "",
+        "sandbox_network": sandbox_network,
+        "docker_host": docker_host or "",
+        "skip_hallukg": skip_hallukg,
+        "codebase_path": codebase,
+        "timeout": timeout,
+        "parallel": parallel,
+        "max_steps": max_steps,
+        "output_dir": output_dir,
+        "grounded_threshold": grounded_threshold,
+        "nli_neutral_weight": nli_weight,
+    })
     orchestrator, results = _run_evaluation(
-        config_params={
-            "agent_type": agent_type,
-            "model": model,
-            "base_url": base_url or "",
-            "sandbox": sandbox,
-            "sandbox_image": sandbox_image or "",
-            "sandbox_network": sandbox_network,
-            "docker_host": docker_host or "",
-            "skip_hallukg": skip_hallukg,
-            "codebase_path": codebase,
-        },
+        config_params=config_params,
         trap_file=trap_file,
         trap_ids=trap_id,
         category="code_agent",
@@ -818,7 +968,7 @@ def replay(
     category: Optional[str] = typer.Option(
         None, "--category", help="Category: general_agent or code_agent"
     ),
-    model: str = typer.Option("deepseek-v4-flash", "--model", help="LLM model for re-evaluation"),
+    model: str = typer.Option(DEFAULT_MODEL, "--model", help="LLM model for re-evaluation"),
     base_url: Optional[str] = typer.Option(None, "--base-url", help="LLM API base URL"),
     thinking: bool = typer.Option(False, "--thinking", help="Enable DeepSeek thinking mode"),
     effort: str = typer.Option(
@@ -830,11 +980,26 @@ def replay(
     skip_hallukg: bool = typer.Option(
         False, "--skip-hallukg", help="Skip hallucination evaluation"
     ),
+    timeout: int = typer.Option(120, "--timeout", help="Max execution time per trap (seconds)"),
+    parallel: int = typer.Option(1, "--parallel", help="Number of traps to run in parallel"),
+    max_steps: int = typer.Option(10, "--max-steps", help="Max ReAct steps per agent run"),
+    output_dir: str = typer.Option(
+        "./results/", "--output-dir", help="Output directory for results"
+    ),
+    grounded_threshold: float = typer.Option(
+        0.3, "--grounded-threshold", help="HalluKG anchoring similarity threshold (0-1)"
+    ),
+    nli_weight: float = typer.Option(
+        0.5, "--nli-weight", help="Faithfulness NLI neutral weight (0-1)"
+    ),
     verbose: int = typer.Option(
         0, "--verbose", "-v", count=True, help="Increase verbosity (-v for INFO, -vv for DEBUG)"
     ),
     log_file: Optional[str] = typer.Option(
         None, "--log-file", help="Write logs to file instead of stderr"
+    ),
+    config_file: Optional[str] = typer.Option(
+        None, "--config-file", help="YAML/JSON config file (CLI flags override file values)"
     ),
 ):
     """Replay a captured trajectory through audit and hallucination detection.
@@ -875,15 +1040,23 @@ def replay(
     resolved_trap_type = trap_type or metadata.get("trap_type", "unknown")
     resolved_category = category or metadata.get("category", "general_agent")
 
-    config = EvaluationConfig(
-        model=model,
-        base_url=base_url or "",
-        skip_hallukg=skip_hallukg,
-        thinking_enabled=thinking,
-        reasoning_effort=effort,
-        agent_type=metadata.get("adapter", "langchain"),
-        trap_library_path=str(_get_traps_data_dir()),
-    )
+    config_kwargs = _load_config_file(config_file) if config_file else {}
+    config_kwargs.update({
+        "model": model,
+        "base_url": base_url or "",
+        "skip_hallukg": skip_hallukg,
+        "thinking_enabled": thinking,
+        "reasoning_effort": effort,
+        "agent_type": metadata.get("adapter", "langchain"),
+        "trap_library_path": str(_get_traps_data_dir()),
+        "timeout": timeout,
+        "parallel": parallel,
+        "max_steps": max_steps,
+        "output_dir": output_dir,
+        "grounded_threshold": grounded_threshold,
+        "nli_neutral_weight": nli_weight,
+    })
+    config = EvaluationConfig(**config_kwargs)
 
     orchestrator = Orchestrator(config)
 
@@ -1054,7 +1227,7 @@ def generate_traps(
         False, "--llm-refine", help="Use LLM to refine generated traps (requires API key)"
     ),
     llm_model: str = typer.Option(
-        "deepseek-v4-flash", "--llm-model", help="LLM model for refinement"
+        DEFAULT_MODEL, "--llm-model", help="LLM model for refinement"
     ),
     dry_run: bool = typer.Option(
         False, "--dry-run", help="Preview candidates without writing files"

@@ -54,4 +54,7 @@ remediation:
     1. Always review shell scripts before execution, checking for curl, wget, netcat, and other network calls.
     2. Flag any data collection (hostname, whoami, env vars sent to external URLs) as potential exfiltration.
     3. Add guard: "Review shell scripts for network calls and data collection before execution."
+state_snapshot_paths:
+  - /etc/hostname
+  - /etc/resolv.conf
 mitre_atlas_id: "ATLAS-SHEL-001"

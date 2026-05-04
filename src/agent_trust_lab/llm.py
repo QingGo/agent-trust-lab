@@ -5,6 +5,7 @@ from dotenv import load_dotenv
 from openai import APIConnectionError, APIError, APITimeoutError, OpenAI
 from openai.types.chat import ChatCompletion
 
+from agent_trust_lab.config import DEFAULT_MODEL
 from agent_trust_lab.log import get_logger
 
 load_dotenv()
@@ -48,7 +49,7 @@ def create_openai_client(
 
 
 def create_langchain_llm(
-    model: str = "deepseek-v4-flash",
+    model: str = DEFAULT_MODEL,
     api_key: str = "",
     base_url: str = "",
     temperature: float = 0.0,
@@ -67,7 +68,7 @@ def create_langchain_llm(
 
 
 def test_connection(
-    model: str = "deepseek-v4-flash",
+    model: str = DEFAULT_MODEL,
     api_key: str = "",
     base_url: str = "",
 ) -> tuple[bool, str]:

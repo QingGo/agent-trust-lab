@@ -60,9 +60,10 @@ test-manager:
 test-all:
 	$(PYTHON) -m pytest tests/ -v
 
-# L4: smoke test — validate entire trap library loads correctly
+# L4: smoke test — validate entire trap library loads correctly + fast unit tests
 smoke:
 	$(PYTHON) -m agent_trust_lab.cli validate-traps
+	$(PYTHON) -m pytest tests/test_log.py tests/test_llm.py -q
 
 # L3: integration tests — requires DEEPSEEK_API_KEY (auto-skipped otherwise)
 test-integration:

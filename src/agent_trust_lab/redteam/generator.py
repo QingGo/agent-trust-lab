@@ -8,6 +8,7 @@ from typing import Any, Dict, List, Optional
 
 import yaml
 
+from agent_trust_lab.config import DEFAULT_MODEL
 from agent_trust_lab.log import get_logger
 from agent_trust_lab.models.trap import EnhancedTrapDef
 from agent_trust_lab.traps.manager import TrapManager
@@ -126,7 +127,7 @@ class RedTeamConfig:
     difficulty_vary: bool = True
     mutation_seed: Optional[int] = None
     llm_refine: bool = False
-    llm_model: str = "deepseek-v4-flash"
+    llm_model: str = DEFAULT_MODEL
     target_types: List[str] = field(default_factory=list)
 
 

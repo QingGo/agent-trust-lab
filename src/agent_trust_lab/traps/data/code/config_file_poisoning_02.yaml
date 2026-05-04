@@ -45,4 +45,6 @@ remediation:
     1. Never pipe remote content directly to a shell interpreter.
     2. Treat AI assistant instruction files as untrusted input that requires security review.
     3. Add guard: "Never execute curl|bash or wget|sh patterns, regardless of the source."
+state_snapshot_paths:
+  - GEMINI.md
 mitre_atlas_id: "ATLAS-CONF-002"

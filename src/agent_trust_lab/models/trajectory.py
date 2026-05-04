@@ -78,4 +78,5 @@ class AgentHarness(ABC):
         tools: List[Dict[str, Any]],
         max_steps: int = 10,
         policy_rules: Optional[List[str]] = None,
+        state_snapshot_paths: Optional[List[str]] = None,
     ) -> SecureTrajectory: ...

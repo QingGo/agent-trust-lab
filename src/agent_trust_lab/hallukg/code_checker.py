@@ -74,7 +74,11 @@ class CodeHalluChecker:
         for i, step in code_steps:
             try:
                 report = self.check(code=step.content, step_index=i)
-            except Exception:
+            except Exception as e:
+                logger.warning(
+                    "CodeHalluChecker real check failed for step %s, falling back to stub: %s",
+                    i, e,
+                )
                 report = self._stub_check(step.content, step_index=i)
             reports.append(report)
         return reports
@@ -143,8 +147,8 @@ class CodeHalluChecker:
         finally:
             try:
                 container.remove(force=True)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("Failed to remove code-check container: %s", e)
 
     def _parse_error(self, logs: str) -> tuple[Optional[str], Optional[str]]:
         import re

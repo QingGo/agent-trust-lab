@@ -718,3 +718,169 @@ class TestTrapManagerLoadSingleFile:
 
         trap = TrapManager._load_single_file("/nonexistent/path.yaml")
         assert trap is None
+
+
+class TestAssertToolCalls:
+    def build_trajectory(self, steps=None, events=None):
+        from agent_trust_lab.models.trajectory import SecureTrajectory
+
+        return SecureTrajectory(
+            steps=steps or [],
+            security_events=events or [],
+        )
+
+    def test_no_expected_calls_no_events(self):
+        from agent_trust_lab.models.trajectory import TrajectoryStep
+
+        traj = self.build_trajectory(
+            steps=[
+                TrajectoryStep(
+                    type="action", content="file_list /tmp", tools_called=["file_list"]
+                )
+            ]
+        )
+        Orchestrator._assert_tool_calls(traj, [])
+        assert len(traj.security_events) == 0
+
+    def test_positive_call_satisfied(self):
+        from agent_trust_lab.models.trajectory import TrajectoryStep
+
+        traj = self.build_trajectory(
+            steps=[
+                TrajectoryStep(
+                    type="action", content="file_list /app", tools_called=["file_list"]
+                )
+            ]
+        )
+        from agent_trust_lab.models.trap import ExpectedToolCall
+
+        expected = [ExpectedToolCall(name="file_list")]
+        Orchestrator._assert_tool_calls(traj, expected)
+        assert len(traj.security_events) == 0
+
+    def test_positive_call_missing_generates_event(self):
+        from agent_trust_lab.models.trajectory import TrajectoryStep
+
+        traj = self.build_trajectory(
+            steps=[
+                TrajectoryStep(
+                    type="action", content="file_read /app", tools_called=["file_read"]
+                )
+            ]
+        )
+        from agent_trust_lab.models.trap import ExpectedToolCall
+
+        expected = [ExpectedToolCall(name="file_list")]
+        Orchestrator._assert_tool_calls(traj, expected)
+        assert len(traj.security_events) == 1
+        assert traj.security_events[0].event_type == "tool_call_missing"
+
+    def test_negative_call_not_called_no_event(self):
+        from agent_trust_lab.models.trajectory import TrajectoryStep
+
+        traj = self.build_trajectory(
+            steps=[
+                TrajectoryStep(
+                    type="action", content="file_list /tmp", tools_called=["file_list"]
+                )
+            ]
+        )
+        from agent_trust_lab.models.trap import ExpectedToolCall
+
+        expected = [ExpectedToolCall(name="file_delete", should_call=False)]
+        Orchestrator._assert_tool_calls(traj, expected)
+        assert len(traj.security_events) == 0
+
+    def test_negative_call_called_generates_violation(self):
+        from agent_trust_lab.models.trajectory import TrajectoryStep
+
+        traj = self.build_trajectory(
+            steps=[
+                TrajectoryStep(
+                    type="action", content="file_delete /tmp", tools_called=["file_delete"]
+                )
+            ]
+        )
+        from agent_trust_lab.models.trap import ExpectedToolCall
+
+        expected = [ExpectedToolCall(name="file_delete", should_call=False)]
+        Orchestrator._assert_tool_calls(traj, expected)
+        assert len(traj.security_events) == 1
+        assert traj.security_events[0].event_type == "tool_call_violation"
+
+    def test_arguments_pattern_matched_no_event(self):
+        from agent_trust_lab.models.trajectory import TrajectoryStep
+
+        traj = self.build_trajectory(
+            steps=[
+                TrajectoryStep(
+                    type="action",
+                    content='file_read {"path": "/app/config.yml"}',
+                    tools_called=["file_read"],
+                )
+            ]
+        )
+        from agent_trust_lab.models.trap import ExpectedToolCall
+
+        expected = [ExpectedToolCall(name="file_read", arguments_pattern=r'\{"path": ".*"\}')]
+        Orchestrator._assert_tool_calls(traj, expected)
+        assert len(traj.security_events) == 0
+
+    def test_arguments_pattern_mismatched_generates_violation(self):
+        from agent_trust_lab.models.trajectory import TrajectoryStep
+
+        traj = self.build_trajectory(
+            steps=[
+                TrajectoryStep(
+                    type="action",
+                    content="file_read --wrong-format",
+                    tools_called=["file_read"],
+                )
+            ]
+        )
+        from agent_trust_lab.models.trap import ExpectedToolCall
+
+        expected = [ExpectedToolCall(name="file_read", arguments_pattern=r'\{"path": ".*"\}')]
+        Orchestrator._assert_tool_calls(traj, expected)
+        assert len(traj.security_events) == 1
+        assert traj.security_events[0].event_type == "tool_call_violation"
+
+    def test_multiple_expected_calls(self):
+        from agent_trust_lab.models.trajectory import TrajectoryStep
+
+        traj = self.build_trajectory(
+            steps=[
+                TrajectoryStep(
+                    type="action", content="file_list /tmp", tools_called=["file_list"]
+                ),
+                TrajectoryStep(
+                    type="action", content="file_read /tmp/a", tools_called=["file_read"]
+                ),
+            ]
+        )
+        from agent_trust_lab.models.trap import ExpectedToolCall
+
+        expected = [
+            ExpectedToolCall(name="file_list"),
+            ExpectedToolCall(name="file_read"),
+            ExpectedToolCall(name="file_delete", should_call=False),
+        ]
+        Orchestrator._assert_tool_calls(traj, expected)
+        assert len(traj.security_events) == 0
+
+
+class TestToolCallAssertionIntegration:
+    def test_run_single_with_expected_calls(self, trap_data_dir):
+        config = EvaluationConfig(
+            trap_library_path=trap_data_dir,
+            agent_type="langchain",
+            dry_run=True,
+        )
+        orchestrator = Orchestrator(config)
+
+        traps = orchestrator.trap_manager.load_traps(trap_ids=["orch_test_01"])
+        assert len(traps) == 1
+
+        result = orchestrator.run_single(traps[0], mutate=False)
+        assert result is not None
+        assert isinstance(result, EvaluationResult)

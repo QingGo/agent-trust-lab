@@ -1,11 +1,18 @@
+import os
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional
+
+DEFAULT_MODEL = "deepseek-v4-flash"
+
+CACHE_ROOT = os.path.expanduser("~/.cache/agent-trust-lab")
+ONNX_CACHE_DIR = os.path.join(CACHE_ROOT, "onnx")
+CALIBRATION_CACHE_DIR = os.path.join(CACHE_ROOT, "calibration")
 
 
 @dataclass
 class EvaluationConfig:
     agent_type: str = "langchain"
-    model: str = "deepseek-v4-flash"
+    model: str = DEFAULT_MODEL
     api_key: str = ""
     base_url: str = ""
     sandbox: str = "docker"

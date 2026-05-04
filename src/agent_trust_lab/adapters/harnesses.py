@@ -2,6 +2,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 from agent_trust_lab.adapters.registry import register_adapter
+from agent_trust_lab.config import DEFAULT_MODEL
 from agent_trust_lab.log import get_logger
 from agent_trust_lab.models.trajectory import (
     AgentHarness,
@@ -41,7 +42,7 @@ def _format_tool_result(tool_name: str, arguments: str) -> str:
 @register_adapter("langchain")
 @dataclass
 class LangChainHarness(AgentHarness):
-    model: str = "deepseek-v4-flash"
+    model: str = DEFAULT_MODEL
     temperature: float = 0.0
     timeout: int = 120
     api_key: str = ""
@@ -65,6 +66,7 @@ class LangChainHarness(AgentHarness):
         tools: List[Dict[str, Any]],
         max_steps: int = 10,
         policy_rules: Optional[List[str]] = None,
+        state_snapshot_paths: Optional[List[str]] = None,
     ) -> SecureTrajectory:
         try:
             return self._run_with_llm(task, tools, max_steps, policy_rules)
@@ -347,6 +349,7 @@ class OpenAIFunctionHarness(AgentHarness):
         tools: List[Dict[str, Any]],
         max_steps: int = 10,
         policy_rules: Optional[List[str]] = None,
+        state_snapshot_paths: Optional[List[str]] = None,
     ) -> SecureTrajectory:
         steps: List[TrajectoryStep] = []
         security_events: List[SecurityEvent] = []
@@ -440,6 +443,7 @@ class CodexHarness(AgentHarness):
         tools: List[Dict[str, Any]],
         max_steps: int = 10,
         policy_rules: Optional[List[str]] = None,
+        state_snapshot_paths: Optional[List[str]] = None,
     ) -> SecureTrajectory:
         try:
             return self._run_with_llm(task, tools, max_steps, policy_rules)

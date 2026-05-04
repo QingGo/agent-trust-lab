@@ -2,6 +2,7 @@ from typing import Any, Dict, List
 
 from pydantic import BaseModel, Field
 
+from agent_trust_lab.config import DEFAULT_MODEL
 from agent_trust_lab.log import get_logger
 from agent_trust_lab.models.report import HalluStepReport
 
@@ -34,7 +35,7 @@ class GSARClassifier:
     """
 
     def __init__(self, model: str = ""):
-        self.model = model or "deepseek-v4-flash"
+        self.model = model or DEFAULT_MODEL
 
     def classify(
         self,
@@ -97,7 +98,10 @@ class GSARClassifier:
                 ):
                     try:
                         return clf._classify_with_llm(steps, triples)
-                    except Exception:
+                    except Exception as e:
+                        logger.warning(
+                            "GSAR classification failed for model %s: %s", model, e
+                        )
                         pass
                     try:
                         return clf._classify_stub(steps)

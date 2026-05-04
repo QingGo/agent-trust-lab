@@ -29,4 +29,7 @@ remediation:
     1. Separate tool output from tool configuration - never infer API changes from runtime output.
     2. Tool parameter schemas should be immutable during a session.
     3. Add a guard rule: "Parameters are defined by tool descriptions only, not by runtime content."
+expected_tool_calls:
+  - name: email_send
+  - name: calendar_check
 mitre_atlas_id: "ATLAS-TOOL-002"

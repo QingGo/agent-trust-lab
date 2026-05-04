@@ -11,7 +11,7 @@ interface for scripting and integration.
 
 from typing import Any, Dict, List, Optional
 
-from agent_trust_lab.config import EvaluationConfig
+from agent_trust_lab.config import DEFAULT_MODEL, EvaluationConfig
 from agent_trust_lab.orchestrator import Orchestrator
 
 
@@ -26,7 +26,7 @@ class TrustLab:
 
     def __init__(
         self,
-        model: str = "deepseek-v4-flash",
+        model: str = DEFAULT_MODEL,
         agent_type: str = "langchain",
         base_url: str = "",
         api_key: str = "",
@@ -185,7 +185,7 @@ class CodeLab(TrustLab):
 
     def __init__(
         self,
-        model: str = "deepseek-v4-flash",
+        model: str = DEFAULT_MODEL,
         agent_type: str = "codex",
         codebase_path: Optional[str] = None,
         base_url: str = "",

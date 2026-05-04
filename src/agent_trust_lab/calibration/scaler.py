@@ -1,8 +1,9 @@
 """Platt scaling for calibrating model scores to human-aligned probabilities."""
 
 import math
-from typing import List, Optional, Tuple
+from typing import List, Optional, Tuple, cast
 
+import numpy as np
 from sklearn.linear_model import LogisticRegression
 
 from agent_trust_lab.log import get_logger
@@ -40,24 +41,28 @@ def fit_platt_scaling(
         )
         return None
 
-    x_arr = [[s] for s in raw_scores]
-    y_arr = binary_labels
+    x_arr = np.array([[s] for s in raw_scores], dtype=float)
+    y_arr = np.array(binary_labels, dtype=int)
 
     try:
         clf = LogisticRegression(solver="lbfgs")
-        clf.fit(x_arr, y_arr)  # type: ignore[arg-type]
+        clf.fit(x_arr, y_arr)
     except Exception as e:
         logger.error("Platt scaling fit failed: %s", e)
         return None
 
     coef = clf.coef_
-    if coef is None or coef.shape[1] < 1:
+    if coef is None:
+        return None
+    coef_arr: np.ndarray = cast(np.ndarray, coef)
+    if coef_arr.shape[1] < 1:
         return None
     intercept = clf.intercept_
     if intercept is None:
         return None
-    a_val = -float(coef[0][0])  # type: ignore[reportIndexIssue]
-    b_val = -float(intercept[0])  # type: ignore[reportIndexIssue]
+    intercept_arr: np.ndarray = cast(np.ndarray, intercept)
+    a_val = -float(coef_arr[0][0])
+    b_val = -float(intercept_arr[0])
     logger.debug("Platt params: a=%.4f b=%.4f (n=%d)", a_val, b_val, len(raw_scores))
     return a_val, b_val
 

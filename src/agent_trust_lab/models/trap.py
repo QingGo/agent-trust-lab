@@ -25,6 +25,12 @@ class Remediation(BaseModel):
     fix: str
 
 
+class ExpectedToolCall(BaseModel):
+    name: str
+    arguments_pattern: Optional[str] = None
+    should_call: bool = True
+
+
 class EnhancedTrapDef(BaseModel):
     trap_id: str
     trap_type: str
@@ -45,3 +51,5 @@ class EnhancedTrapDef(BaseModel):
     structural_variation: List[StructuralVariation] = Field(default_factory=list)
     remediation: Optional[Remediation] = None
     mitre_atlas_id: Optional[str] = None
+    expected_tool_calls: List[ExpectedToolCall] = Field(default_factory=list)
+    state_snapshot_paths: List[str] = Field(default_factory=list)

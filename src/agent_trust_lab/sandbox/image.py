@@ -68,7 +68,11 @@ class ImageManager:
             logger.info("Image %s pulled successfully", image_ref)
             return True
         except DockerException as e:
-            logger.error("Failed to pull image %s: %s", image_ref, e)
+            logger.error(
+                "Failed to pull image %s: %s. "
+                "Is Docker running? If behind a firewall, check mirror accessibility.",
+                image_ref, e,
+            )
             return False
 
     def cleanup_orphaned(self) -> int:

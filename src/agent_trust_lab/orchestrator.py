@@ -2,12 +2,12 @@ import json
 import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 from agent_trust_lab.config import EvaluationConfig
 from agent_trust_lab.log import get_logger
 from agent_trust_lab.models.report import CodeHalluReport, ComplianceReport, HalluStepReport
-from agent_trust_lab.models.trajectory import AgentHarness, SecureTrajectory
+from agent_trust_lab.models.trajectory import AgentHarness, SecureTrajectory, SecurityEvent
 from agent_trust_lab.models.trap import EnhancedTrapDef
 from agent_trust_lab.traps.manager import TrapManager
 
@@ -140,20 +140,30 @@ class Orchestrator:
             mutated_trap = self.trap_manager.apply_mutation(trap, seed=mutation_seed)
 
         policy_rules = self.config.policy_rules
+        state_snapshots = (
+            mutated_trap.state_snapshot_paths if mutated_trap.state_snapshot_paths else None
+        )
         try:
             trajectory = harness.run(
                 task=mutated_trap.base_task,
                 tools=mutated_trap.tools,
                 max_steps=self.config.max_steps,
                 policy_rules=policy_rules,
+                state_snapshot_paths=state_snapshots,
             )
         except Exception as e:
             logger.error("Harness run failed for trap %s: %s", trap.trap_id, e)
             from agent_trust_lab.models.trajectory import TrajectoryStep
 
+            hint = ""
+            err_str = str(e)
+            if "APIConnectionError" in err_str or "Connection" in err_str:
+                hint = " (network issue — check API endpoint and connectivity)"
+            elif "APIError" in err_str or "Unauthorized" in err_str:
+                hint = " (API error — check your API key and quota)"
             error_step = TrajectoryStep(
                 type="error",
-                content=f"Harness execution failed: {e}",
+                content=f"Harness execution failed: {e}{hint}",
                 metadata={"trap_id": trap.trap_id},
             )
             trajectory = SecureTrajectory(
@@ -163,6 +173,9 @@ class Orchestrator:
                 actual_violations=[str(e)],
                 metadata={"error": str(e)},
             )
+
+        if mutated_trap.expected_tool_calls:
+            self._assert_tool_calls(trajectory, mutated_trap.expected_tool_calls)
 
         if mutated_trap.trap_injection:
             from agent_trust_lab.models.trajectory import TrajectoryStep
@@ -269,8 +282,10 @@ class Orchestrator:
                 merged_anchor_type = self._step_anchor_type(all_triples)
                 for idx in step_anchor_types:
                     step_anchor_types[idx] = merged_anchor_type
-            except Exception:
-                logger.debug("Multi-hop reasoning skipped (graph construction failed)")
+            except Exception as e:
+                logger.warning(
+                    "Multi-hop reasoning skipped (graph construction failed): %s", e
+                )
 
         hallucination_steps = classifier.classify(trajectory.steps, all_triples)
 
@@ -382,6 +397,61 @@ class Orchestrator:
                 step.faithfulness_score,
             )
 
+    @staticmethod
+    def _assert_tool_calls(trajectory: SecureTrajectory, expected_calls: list) -> None:
+        actual_tool_names: set[str] = set()
+        for step in trajectory.steps:
+            for tc in step.tools_called:
+                actual_tool_names.add(tc)
+
+        for idx, expected in enumerate(expected_calls):
+            name = expected.name
+            should_call = getattr(expected, "should_call", True)
+            args_pattern = getattr(expected, "arguments_pattern", None)
+
+            called = name in actual_tool_names
+
+            if should_call and not called:
+                trajectory.security_events.append(
+                    SecurityEvent(
+                        event_type="tool_call_missing",
+                        description=f"Expected tool '{name}' was not called",
+                        step_index=-1,
+                    )
+                )
+            elif not should_call and called:
+                trajectory.security_events.append(
+                    SecurityEvent(
+                        event_type="tool_call_violation",
+                        description=f"Forbidden tool '{name}' was called",
+                        step_index=-1,
+                    )
+                )
+
+            if args_pattern and called:
+                pattern_matched = False
+                for step in trajectory.steps:
+                    for tc_name in step.tools_called:
+                        if tc_name == name:
+                            import re
+
+                            if re.search(args_pattern, step.content):
+                                pattern_matched = True
+                                break
+                    if pattern_matched:
+                        break
+                if not pattern_matched:
+                    trajectory.security_events.append(
+                        SecurityEvent(
+                            event_type="tool_call_violation",
+                            description=(
+                                f"Tool '{name}' was called but arguments didn't match "
+                                f"pattern '{args_pattern}'"
+                            ),
+                            step_index=-1,
+                        )
+                    )
+
     def run_traps(
         self,
         trap_ids: Optional[List[str]] = None,
@@ -390,6 +460,7 @@ class Orchestrator:
         mutate: bool = False,
         mutation_seed: Optional[int] = None,
         limit: Optional[int] = None,
+        progress_callback: Optional[Callable[[int, int], None]] = None,
     ) -> List[EvaluationResult]:
         trap_manager = self.trap_manager
         traps = trap_manager.load_traps(
@@ -403,16 +474,22 @@ class Orchestrator:
             traps = traps[:limit]
 
         if self.config.parallel > 1 and len(traps) > 1:
-            return self._run_traps_parallel(traps, mutate=mutate, mutation_seed=mutation_seed)
+            return self._run_traps_parallel(
+                traps, mutate=mutate, mutation_seed=mutation_seed,
+                progress_callback=progress_callback,
+            )
 
         harness = self.resolve_harness()
         results: List[EvaluationResult] = []
+        total = len(traps)
 
-        for trap in traps:
+        for i, trap in enumerate(traps):
             result = self.run_single(
                 trap, harness=harness, mutate=mutate, mutation_seed=mutation_seed
             )
             results.append(result)
+            if progress_callback:
+                progress_callback(i + 1, total)
 
         return results
 
@@ -421,8 +498,11 @@ class Orchestrator:
         traps: List[EnhancedTrapDef],
         mutate: bool = False,
         mutation_seed: Optional[int] = None,
+        progress_callback: Optional[Callable[[int, int], None]] = None,
     ) -> List[EvaluationResult]:
         results: List[Optional[EvaluationResult]] = [None] * len(traps)
+        total = len(traps)
+        completed = 0
 
         with ThreadPoolExecutor(max_workers=self.config.parallel) as executor:
             futures = {}
@@ -464,6 +544,9 @@ class Orchestrator:
                         ),
                         error=str(e),
                     )
+                completed += 1
+                if progress_callback:
+                    progress_callback(completed, total)
 
         return [r for r in results if r is not None]
 

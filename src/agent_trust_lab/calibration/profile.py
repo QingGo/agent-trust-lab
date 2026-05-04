@@ -6,11 +6,13 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
+from agent_trust_lab.config import CALIBRATION_CACHE_DIR
 from agent_trust_lab.log import get_logger
 
 logger = get_logger("calibration.profile")
 
-DEFAULT_CALIBRATION_DIR = os.path.expanduser("~/.cache/agent-trust-lab/calibration")
+
+DEFAULT_CALIBRATION_DIR = CALIBRATION_CACHE_DIR
 
 
 @dataclass

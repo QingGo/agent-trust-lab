@@ -310,3 +310,15 @@ class TestEvaluationConfig:
     def test_anchor_type_weights_above_one_raises(self):
         with pytest.raises(ValueError, match="anchor_type_weights"):
             EvaluationConfig(anchor_type_weights={"semantic": 1.5})
+
+    def test_max_steps_below_one_raises(self):
+        with pytest.raises(ValueError, match="max_steps"):
+            EvaluationConfig(max_steps=0)
+
+    def test_parallel_below_one_raises(self):
+        with pytest.raises(ValueError, match="parallel"):
+            EvaluationConfig(parallel=0)
+
+    def test_timeout_below_one_raises(self):
+        with pytest.raises(ValueError, match="timeout"):
+            EvaluationConfig(timeout=0)

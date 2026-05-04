@@ -8,11 +8,12 @@ import os
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Type
 
+from agent_trust_lab.config import ONNX_CACHE_DIR
 from agent_trust_lab.log import get_logger
 
 logger = get_logger("onnx_setup")
 
-DEFAULT_CACHE = os.path.join(os.path.expanduser("~"), ".cache", "agent-trust-lab", "onnx")
+DEFAULT_CACHE = ONNX_CACHE_DIR
 
 
 @dataclass

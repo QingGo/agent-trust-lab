@@ -1,5 +1,6 @@
 from typing import List
 
+from agent_trust_lab.config import ONNX_CACHE_DIR
 from agent_trust_lab.log import get_logger
 
 logger = get_logger("hallukg.faithfulness")
@@ -89,14 +90,7 @@ class FaithfulnessChecker:
 
             import numpy as np
 
-            model_path = os.path.join(
-                os.path.expanduser("~"),
-                ".cache",
-                "agent-trust-lab",
-                "onnx",
-                "roberta-base-mnli",
-                "model.onnx",
-            )
+            model_path = os.path.join(ONNX_CACHE_DIR, "roberta-base-mnli", "model.onnx")
             tokenizer_path = os.path.join(os.path.dirname(model_path), "tokenizer.json")
 
             if not os.path.exists(model_path) or not os.path.exists(tokenizer_path):
