@@ -60,6 +60,7 @@ class LangChainHarness(AgentHarness):
             thinking_enabled=config.thinking_enabled,
             reasoning_effort=config.reasoning_effort,
             strict_mode=config.strict_mode,
+            temperature=config.temperature,
         )
 
     def run(
@@ -366,7 +367,7 @@ class OpenAIFunctionHarness(AgentHarness):
 
     @classmethod
     def from_config(cls, config: "EvaluationConfig") -> "OpenAIFunctionHarness":
-        return cls(model=config.model)
+        return cls(model=config.model, temperature=config.temperature)
 
     def run(
         self,
@@ -462,6 +463,7 @@ class CodexHarness(AgentHarness):
             thinking_enabled=config.thinking_enabled,
             reasoning_effort=config.reasoning_effort,
             strict_mode=config.strict_mode,
+            temperature=config.temperature,
         )
 
     def run(

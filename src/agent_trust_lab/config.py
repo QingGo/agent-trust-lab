@@ -7,12 +7,14 @@ DEFAULT_MODEL = "deepseek-v4-flash"
 CACHE_ROOT = os.path.expanduser("~/.cache/agent-trust-lab")
 ONNX_CACHE_DIR = os.path.join(CACHE_ROOT, "onnx")
 CALIBRATION_CACHE_DIR = os.path.join(CACHE_ROOT, "calibration")
+RESULT_CACHE_DIR = os.path.join(CACHE_ROOT, "results")
 
 
 @dataclass
 class EvaluationConfig:
     agent_type: str = "langchain"
     model: str = DEFAULT_MODEL
+    judge_model: str = ""  # model used as GSAR judge; defaults to model when empty
     api_key: str = ""
     base_url: str = ""
     sandbox: str = "docker"
@@ -28,6 +30,7 @@ class EvaluationConfig:
     calibration_profile: Optional[str] = None
     thinking_enabled: bool = False
     reasoning_effort: str = ""
+    temperature: float = 0.0
     model_list: List[str] = field(default_factory=list)
     policy_rules: Optional[List[str]] = None
     codebase_path: Optional[str] = None
@@ -47,6 +50,14 @@ class EvaluationConfig:
             "none": 0.5,
         }
     )
+    cache_enabled: bool = True
+    cache_ttl_days: int = 7
+    cache_dir: str = RESULT_CACHE_DIR
+    adaptive_sampling: bool = True
+    adaptive_disagreement_threshold: float = 0.3
+    adaptive_max_samples: int = 3
+    self_consistency_enabled: bool = False
+    self_consistency_samples: int = 5
 
     def __post_init__(self) -> None:
         if self.max_steps < 1:
@@ -55,6 +66,10 @@ class EvaluationConfig:
             raise ValueError(f"parallel must be >= 1, got {self.parallel}")
         if self.timeout < 1:
             raise ValueError(f"timeout must be >= 1, got {self.timeout}")
+        if not 0.0 <= self.temperature <= 2.0:
+            raise ValueError(
+                f"temperature must be in [0.0, 2.0], got {self.temperature}"
+            )
         if not 0.0 <= self.grounded_threshold <= 1.0:
             raise ValueError(
                 f"grounded_threshold must be in [0.0, 1.0], got {self.grounded_threshold}"
@@ -68,3 +83,18 @@ class EvaluationConfig:
                 raise ValueError(
                     f"anchor_type_weights[{atype}] must be in [0.0, 1.0], got {weight}"
                 )
+        if self.cache_ttl_days < 0:
+            raise ValueError(f"cache_ttl_days must be >= 0, got {self.cache_ttl_days}")
+        if not 0.0 <= self.adaptive_disagreement_threshold <= 1.0:
+            raise ValueError(
+                f"adaptive_disagreement_threshold must be in [0.0, 1.0], "
+                f"got {self.adaptive_disagreement_threshold}"
+            )
+        if self.adaptive_max_samples < 1:
+            raise ValueError(
+                f"adaptive_max_samples must be >= 1, got {self.adaptive_max_samples}"
+            )
+        if self.self_consistency_samples < 2:
+            raise ValueError(
+                f"self_consistency_samples must be >= 2, got {self.self_consistency_samples}"
+            )

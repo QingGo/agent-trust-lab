@@ -144,6 +144,8 @@ class DockerSandbox(AgentHarness):
 
         security_opts = {
             "read_only": True,
+            "privileged": False,
+            "security_opt": ["no-new-privileges"],
             "cap_drop": ["ALL"],
             "tmpfs": {"/tmp": f"size={self.tmpfs_size}"},
             "mem_limit": "128m",
@@ -243,6 +245,9 @@ class DockerSandbox(AgentHarness):
                 detach=True,
                 auto_remove=True,
                 read_only=True,
+                privileged=False,
+                security_opt=["no-new-privileges"],
+                cap_drop=["ALL"],
                 network_disabled=True,
                 mem_limit="32m",
                 labels={SANDBOX_LABEL: ""},

@@ -146,6 +146,51 @@ class TestDockerSandbox:
         sandbox = DockerSandbox()
         assert isinstance(sandbox, AgentHarness)
 
+    def test_security_opts_include_privileged_false(self):
+        from unittest.mock import MagicMock, patch
+
+        sandbox = DockerSandbox()
+
+        mock_run = MagicMock()
+        mock_run.wait.return_value = {"StatusCode": 0}
+        mock_run.logs.return_value = b"output"
+
+        mock_containers = MagicMock()
+        mock_containers.run.return_value = mock_run
+
+        mock_client = MagicMock()
+        mock_client.containers = mock_containers
+
+        with patch(
+            "agent_trust_lab.sandbox.image.get_docker_client",
+            return_value=mock_client,
+        ):
+            with patch(
+                "agent_trust_lab.sandbox.image.ImageManager"
+            ) as mock_img_mgr_cls:
+                mock_img_mgr_cls.return_value.ensure_image.return_value = True
+                mock_img_mgr_cls.return_value.cleanup_orphaned.return_value = 0
+                sandbox._execute_in_container(
+                    task="echo test",
+                    tools=[],
+                    steps=[],
+                    security_events=[],
+                    policy_rules_applied=[],
+                    actual_violations=[],
+                )
+
+            call_kwargs = mock_containers.run.call_args
+            assert call_kwargs is not None, "container run should be called"
+            run_kwargs = call_kwargs[1]
+            assert run_kwargs.get("privileged") is False, (
+                "privileged must be explicitly False"
+            )
+            assert "no-new-privileges" in run_kwargs.get("security_opt", []), (
+                "security_opt must include no-new-privileges"
+            )
+            assert run_kwargs.get("read_only") is True
+            assert "ALL" in run_kwargs.get("cap_drop", [])
+
 
 class TestDryRunSandbox:
     def test_default_construction(self):

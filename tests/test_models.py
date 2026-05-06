@@ -322,3 +322,85 @@ class TestEvaluationConfig:
     def test_timeout_below_one_raises(self):
         with pytest.raises(ValueError, match="timeout"):
             EvaluationConfig(timeout=0)
+
+    def test_judge_model_defaults_empty(self):
+        config = EvaluationConfig()
+        assert config.judge_model == ""
+
+    def test_judge_model_custom(self):
+        config = EvaluationConfig(judge_model="deepseek-v4-pro")
+        assert config.judge_model == "deepseek-v4-pro"
+
+    def test_cache_enabled_default(self):
+        config = EvaluationConfig()
+        assert config.cache_enabled is True
+
+    def test_cache_ttl_days_default(self):
+        config = EvaluationConfig()
+        assert config.cache_ttl_days == 7
+
+    def test_cache_dir_default(self):
+        from agent_trust_lab.config import RESULT_CACHE_DIR
+
+        config = EvaluationConfig()
+        assert config.cache_dir == RESULT_CACHE_DIR
+
+    def test_cache_dir_custom(self):
+        config = EvaluationConfig(cache_dir="/tmp/my_cache")
+        assert config.cache_dir == "/tmp/my_cache"
+
+    def test_cache_ttl_days_below_zero_raises(self):
+        with pytest.raises(ValueError, match="cache_ttl_days"):
+            EvaluationConfig(cache_ttl_days=-1)
+
+    def test_adaptive_sampling_default(self):
+        config = EvaluationConfig()
+        assert config.adaptive_sampling is True
+
+    def test_adaptive_disagreement_threshold_default(self):
+        config = EvaluationConfig()
+        assert config.adaptive_disagreement_threshold == 0.3
+
+    def test_adaptive_disagreement_threshold_below_zero_raises(self):
+        with pytest.raises(ValueError, match="adaptive_disagreement_threshold"):
+            EvaluationConfig(adaptive_disagreement_threshold=-0.1)
+
+    def test_adaptive_disagreement_threshold_above_one_raises(self):
+        with pytest.raises(ValueError, match="adaptive_disagreement_threshold"):
+            EvaluationConfig(adaptive_disagreement_threshold=1.5)
+
+    def test_adaptive_max_samples_default(self):
+        config = EvaluationConfig()
+        assert config.adaptive_max_samples == 3
+
+    def test_adaptive_max_samples_below_one_raises(self):
+        with pytest.raises(ValueError, match="adaptive_max_samples"):
+            EvaluationConfig(adaptive_max_samples=0)
+
+    def test_self_consistency_enabled_default(self):
+        config = EvaluationConfig()
+        assert config.self_consistency_enabled is False
+
+    def test_self_consistency_samples_default(self):
+        config = EvaluationConfig()
+        assert config.self_consistency_samples == 5
+
+    def test_self_consistency_samples_below_two_raises(self):
+        with pytest.raises(ValueError, match="self_consistency_samples"):
+            EvaluationConfig(self_consistency_enabled=True, self_consistency_samples=1)
+
+    def test_temperature_default(self):
+        config = EvaluationConfig()
+        assert config.temperature == 0.0
+
+    def test_temperature_below_zero_raises(self):
+        with pytest.raises(ValueError, match="temperature"):
+            EvaluationConfig(temperature=-0.1)
+
+    def test_temperature_above_two_raises(self):
+        with pytest.raises(ValueError, match="temperature"):
+            EvaluationConfig(temperature=2.1)
+
+    def test_temperature_custom(self):
+        config = EvaluationConfig(temperature=0.7)
+        assert config.temperature == 0.7

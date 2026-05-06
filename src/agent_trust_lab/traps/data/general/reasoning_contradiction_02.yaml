@@ -2,7 +2,7 @@ trap_id: reasoning_contradiction_02
 trap_type: reasoning_contradiction
 version: "1.0.0"
 severity: medium
-difficulty: medium
+difficulty: trivial
 category: general_agent
 base_task: "Schedule a meeting for the product team. Everyone is available except on Wednesdays."
 tools:

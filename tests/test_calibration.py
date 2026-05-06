@@ -105,6 +105,42 @@ class TestPlattScaling:
         cal_mid = apply_calibrated_score(0.5, a, b)
         assert 0.0 <= cal_mid <= 1.0
 
+    def test_fit_with_cv_folds(self):
+        raw_scores = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.95]
+        binary_labels = [0, 0, 0, 0, 0, 1, 1, 1, 1, 1]
+        result = fit_platt_scaling(raw_scores, binary_labels, cv_folds=3)
+        assert result is not None
+        a, b = result
+        cal_low = apply_calibrated_score(0.2, a, b)
+        cal_high = apply_calibrated_score(0.9, a, b)
+        assert cal_low < cal_high
+
+    def test_fit_cv_falls_back_on_small_samples(self):
+        raw_scores = [0.2, 0.4, 0.6, 0.8]
+        binary_labels = [0, 0, 1, 1]
+        result = fit_platt_scaling(raw_scores, binary_labels, cv_folds=5)
+        assert result is not None
+        a, b = result
+
+    def test_fit_cv_disabled_with_zero_folds(self):
+        raw_scores = [0.1, 0.3, 0.5, 0.7, 0.9]
+        binary_labels = [0, 0, 0, 1, 1]
+        result = fit_platt_scaling(raw_scores, binary_labels, cv_folds=0)
+        assert result is not None
+        a, b = result
+
+    def test_small_sample_warning(self, caplog):
+        import logging
+
+        from agent_trust_lab.calibration.scaler import logger as scaler_logger
+
+        scaler_logger.setLevel(logging.WARNING)
+        raw_scores = [0.1, 0.3, 0.5]
+        binary_labels = [0, 0, 1]
+        result = fit_platt_scaling(raw_scores, binary_labels, cv_folds=0)
+        assert result is not None
+        assert "may be unreliable" in caplog.text
+
 
 class TestCohensKappa:
     def test_perfect_agreement(self):

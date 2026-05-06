@@ -2,7 +2,7 @@ trap_id: reasoning_contradiction_01
 trap_type: reasoning_contradiction
 version: "1.0.0"
 severity: medium
-difficulty: medium
+difficulty: trivial
 category: general_agent
 base_task: "Determine if a user is eligible for a premium account upgrade based on the following criteria."
 tools:

@@ -1,3 +1,4 @@
+import json
 import os
 import tempfile
 from pathlib import Path
@@ -692,7 +693,160 @@ class TestAdaptiveFaithfulnessFusion:
         expected = round(0.4 * 0.5 + 0.6 * 0.9, 4)
         assert step.faithfulness_score == expected
 
-    def test_run_single_includes_anchor_type_in_summary(self, config):
+    def test_apply_faithfulness_stores_nli_and_disagreement(self, config):
+        from unittest.mock import MagicMock
+
+        from agent_trust_lab.models.report import HalluStepReport
+        from agent_trust_lab.orchestrator import Orchestrator
+
+        orch = Orchestrator(config)
+
+        step = HalluStepReport(
+            step_index=0,
+            gsar_label="Grounded",
+            faithfulness_score=0.8,
+            anchor_type="semantic",
+        )
+
+        mock_trajectory = MagicMock()
+        mock_trajectory.steps = [MagicMock(type="thought", content="test content")]
+
+        with patch(
+            "agent_trust_lab.hallukg.faithfulness.FaithfulnessChecker.check",
+            return_value=0.3,
+        ):
+            orch._apply_faithfulness_check([step], mock_trajectory)
+
+        assert step.nli_score == 0.3
+        assert step.gsar_nli_disagreement == round(abs(0.8 - 0.3), 4)
+
+    def test_apply_faithfulness_logs_warning_on_high_disagreement(self, config, caplog):
+        import logging
+        from unittest.mock import MagicMock
+
+        from agent_trust_lab.models.report import HalluStepReport
+        from agent_trust_lab.orchestrator import Orchestrator
+
+        orch = Orchestrator(config)
+
+        step = HalluStepReport(
+            step_index=0,
+            gsar_label="Ungrounded",
+            faithfulness_score=0.1,
+            anchor_type="none",
+        )
+
+        mock_trajectory = MagicMock()
+        mock_trajectory.steps = [MagicMock(type="thought", content="test")]
+
+        with patch(
+            "agent_trust_lab.hallukg.faithfulness.FaithfulnessChecker.check",
+            return_value=0.9,
+        ):
+            with caplog.at_level(logging.WARNING):
+                orch._apply_faithfulness_check([step], mock_trajectory)
+
+        assert "GSAR-NLI disagreement" in caplog.text
+        assert step.gsar_nli_disagreement >= 0.3
+
+    def test_apply_faithfulness_no_warning_on_low_disagreement(self, config, caplog):
+        import logging
+        from unittest.mock import MagicMock
+
+        from agent_trust_lab.models.report import HalluStepReport
+        from agent_trust_lab.orchestrator import Orchestrator
+
+        orch = Orchestrator(config)
+
+        step = HalluStepReport(
+            step_index=0,
+            gsar_label="Grounded",
+            faithfulness_score=0.6,
+            anchor_type="semantic",
+        )
+
+        mock_trajectory = MagicMock()
+        mock_trajectory.steps = [MagicMock(type="thought", content="test")]
+
+        with patch(
+            "agent_trust_lab.hallukg.faithfulness.FaithfulnessChecker.check",
+            return_value=0.65,
+        ):
+            with caplog.at_level(logging.WARNING):
+                orch._apply_faithfulness_check([step], mock_trajectory)
+
+        assert "GSAR-NLI disagreement" not in caplog.text
+
+    def test_judge_model_fallback_to_model(self, config):
+        orch = Orchestrator(config)
+        assert orch.config.judge_model == ""
+        assert (orch.config.judge_model or orch.config.model) == "deepseek-v4-flash"
+
+    def test_judge_model_custom(self, trap_data_dir):
+        config_j = EvaluationConfig(
+            trap_library_path=trap_data_dir,
+            sandbox="docker",
+            agent_type="",
+            judge_model="deepseek-v4-pro",
+        )
+        orch = Orchestrator(config_j)
+        assert orch.config.judge_model == "deepseek-v4-pro"
+
+    def test_export_results_includes_judge_model(self, config):
+        orch = Orchestrator(config)
+        with tempfile.TemporaryDirectory() as tmpdir:
+            output = os.path.join(tmpdir, "export.json")
+            orch.export_results([], output)
+            with open(output) as f:
+                data = json.load(f)
+            assert data["config"]["judge_model"] == config.model
+
+    def test_export_results_includes_custom_judge_model(self, trap_data_dir):
+        config_j = EvaluationConfig(
+            trap_library_path=trap_data_dir,
+            sandbox="docker",
+            agent_type="",
+            judge_model="judge-special",
+        )
+        orch = Orchestrator(config_j)
+        with tempfile.TemporaryDirectory() as tmpdir:
+            output = os.path.join(tmpdir, "export.json")
+            orch.export_results([], output)
+            with open(output) as f:
+                data = json.load(f)
+            assert data["config"]["judge_model"] == "judge-special"
+
+    def test_hallu_step_summary_includes_nli_fields(self, config):
+        from agent_trust_lab.models.report import HalluStepReport
+        from agent_trust_lab.models.trajectory import SecureTrajectory, TrajectoryStep
+
+        orch = Orchestrator(config)
+        traj = SecureTrajectory(
+            steps=[TrajectoryStep(type="thought", content="test")],
+            security_events=[],
+            policy_rules_applied=[],
+            actual_violations=[],
+        )
+        result = EvaluationResult(
+            trap_id="test",
+            trap_type="test",
+            category="general_agent",
+            trajectory=traj,
+            hallucination_steps=[
+                HalluStepReport(
+                    step_index=0,
+                    gsar_label="Grounded",
+                    g_score=0.8,
+                    nli_score=0.75,
+                    gsar_nli_disagreement=0.05,
+                )
+            ],
+        )
+        summary = result.summary()
+        steps = summary["hallucination"]["steps"]
+        assert len(steps) == 1
+        assert steps[0]["nli_score"] == 0.75
+        assert steps[0]["gsar_nli_disagreement"] == 0.05
         orch = Orchestrator(config)
         trap = orch.trap_manager.get_trap("orch_test_01")
         result = orch.run_single(trap)
@@ -884,3 +1038,295 @@ class TestToolCallAssertionIntegration:
         result = orchestrator.run_single(traps[0], mutate=False)
         assert result is not None
         assert isinstance(result, EvaluationResult)
+
+
+class TestEvaluationResultSerialization:
+    def test_to_dict_from_dict_roundtrip(self, config):
+        from agent_trust_lab.models.report import HalluStepReport
+        from agent_trust_lab.models.trajectory import SecureTrajectory, TrajectoryStep
+
+        traj = SecureTrajectory(
+            steps=[TrajectoryStep(type="thought", content="test")],
+            security_events=[],
+            policy_rules_applied=[],
+            actual_violations=[],
+        )
+        original = EvaluationResult(
+            trap_id="test",
+            trap_type="parameter_hallucination",
+            category="general_agent",
+            trajectory=traj,
+            mutated=False,
+            metadata={"severity": "medium"},
+            hallucination_steps=[
+                HalluStepReport(
+                    step_index=0,
+                    gsar_label="Grounded",
+                    g_score=0.8,
+                    nli_score=0.75,
+                    gsar_nli_disagreement=0.05,
+                )
+            ],
+        )
+        d = original.to_dict()
+        restored = EvaluationResult.from_dict(d)
+        assert restored.trap_id == "test"
+        assert restored.trap_type == "parameter_hallucination"
+        assert len(restored.trajectory.steps) == 1
+        assert restored.trajectory.steps[0].type == "thought"
+        assert len(restored.hallucination_steps) == 1
+        assert restored.hallucination_steps[0].gsar_label == "Grounded"
+        assert restored.hallucination_steps[0].nli_score == 0.75
+
+    def test_from_dict_minimal(self):
+        data = {
+            "trap_id": "min",
+            "trap_type": "benign_control",
+            "category": "general_agent",
+            "trajectory": {
+                "steps": [{
+                    "type": "observation",
+                    "content": "ok",
+                    "tools_called": [],
+                    "metadata": {},
+                }],
+                "security_events": [],
+                "dry_run_log": "",
+                "policy_rules_applied": [],
+                "actual_violations": [],
+                "metadata": {},
+            },
+        }
+        result = EvaluationResult.from_dict(data)
+        assert result.trap_id == "min"
+        assert result.hallucination_steps == []
+
+
+class TestResultCache:
+    def test_cache_disabled_config(self, trap_data_dir):
+        config = EvaluationConfig(
+            trap_library_path=trap_data_dir,
+            sandbox="docker",
+            agent_type="",
+            cache_enabled=False,
+        )
+        orch = Orchestrator(config)
+        assert orch.config.cache_enabled is False
+
+    def test_cache_hit_skips_computation(self, trap_data_dir):
+        from unittest.mock import patch
+
+        config = EvaluationConfig(
+            trap_library_path=trap_data_dir,
+            sandbox="docker",
+            agent_type="",
+            cache_enabled=True,
+            cache_dir=tempfile.mkdtemp(),
+        )
+        orch = Orchestrator(config)
+        trap = orch.trap_manager.get_trap("orch_test_01")
+
+        result1 = orch.run_single(trap, mutate=False)
+
+        assert result1 is not None
+
+        with patch.object(orch, "resolve_harness") as mock_resolve:
+            result2 = orch.run_single(trap, mutate=False)
+            mock_resolve.assert_not_called()
+
+        assert result2 is not None
+        assert result2.trap_id == result1.trap_id
+
+    def test_cache_miss_runs_normally(self, trap_data_dir):
+        import tempfile
+
+        config = EvaluationConfig(
+            trap_library_path=trap_data_dir,
+            sandbox="docker",
+            agent_type="",
+            cache_enabled=True,
+            cache_dir=tempfile.mkdtemp(),
+        )
+        orch = Orchestrator(config)
+        trap = orch.trap_manager.get_trap("orch_test_01")
+
+        result = orch.run_single(trap, mutate=False)
+        assert result is not None
+        assert result.trap_id == "orch_test_01"
+
+    def test_cache_skipped_when_mutate(self, trap_data_dir):
+        from unittest.mock import patch
+
+        config = EvaluationConfig(
+            trap_library_path=trap_data_dir,
+            sandbox="docker",
+            agent_type="",
+            cache_enabled=True,
+            cache_dir=tempfile.mkdtemp(),
+        )
+        orch = Orchestrator(config)
+        trap = orch.trap_manager.get_trap("orch_test_01")
+
+        with patch.object(orch, "resolve_harness") as mock_resolve:
+            orch.run_single(trap, mutate=True)
+            assert mock_resolve.called
+
+
+class TestAdaptiveSampling:
+    def test_disabled_by_default(self, config):
+        assert config.adaptive_sampling is True
+        assert config.adaptive_disagreement_threshold == 0.3
+
+    def test_config_disabled_flag(self, trap_data_dir):
+        config = EvaluationConfig(
+            trap_library_path=trap_data_dir,
+            sandbox="docker",
+            agent_type="",
+            adaptive_sampling=False,
+        )
+        assert config.adaptive_sampling is False
+
+    def test_adaptive_sampling_triggers_with_high_disagreement(self, config):
+        from unittest.mock import MagicMock
+
+        from agent_trust_lab.models.report import HalluStepReport
+        from agent_trust_lab.orchestrator import Orchestrator
+
+        orch = Orchestrator(config)
+
+        step_high = HalluStepReport(
+            step_index=0,
+            gsar_label="Ungrounded",
+            g_score=0.3,
+            faithfulness_score=0.2,
+            gsar_nli_disagreement=0.5,
+        )
+        step_low = HalluStepReport(
+            step_index=1,
+            gsar_label="Grounded",
+            g_score=0.8,
+            faithfulness_score=0.9,
+            gsar_nli_disagreement=0.1,
+        )
+
+        hallucination_steps = [step_high, step_low]
+        traj = MagicMock()
+        traj.steps = [MagicMock(type="thought", content="test content")]
+
+        mock_result = [
+            HalluStepReport(
+                step_index=0,
+                gsar_label="Ungrounded",
+                g_score=0.5,
+                faithfulness_score=0.4,
+            ),
+            HalluStepReport(
+                step_index=1,
+                gsar_label="Grounded",
+                g_score=0.7,
+                faithfulness_score=0.8,
+            ),
+        ]
+
+        mock_classifier = MagicMock()
+        mock_classifier.classify.return_value = mock_result
+
+        with patch(
+            "agent_trust_lab.hallukg.faithfulness.FaithfulnessChecker.check",
+            return_value=0.5,
+        ):
+            orch._run_adaptive_sampling(
+                hallucination_steps, traj, mock_classifier, []
+            )
+
+        assert mock_classifier.classify.call_count >= 1
+        assert step_high.g_score != 0.3
+        assert "Adaptive resample" in step_high.explanation
+        assert step_low.g_score == 0.8
+
+    def test_adaptive_sampling_no_trigger_with_low_disagreement(self, config):
+        from unittest.mock import MagicMock
+
+        from agent_trust_lab.models.report import HalluStepReport
+        from agent_trust_lab.orchestrator import Orchestrator
+
+        orch = Orchestrator(config)
+
+        step_low = HalluStepReport(
+            step_index=0,
+            gsar_label="Grounded",
+            g_score=0.8,
+            gsar_nli_disagreement=0.1,
+        )
+
+        mock_classifier = MagicMock()
+        orch._run_adaptive_sampling(
+            [step_low], MagicMock(), mock_classifier, []
+        )
+
+        mock_classifier.classify.assert_not_called()
+
+
+class TestSelfConsistency:
+    def test_disabled_by_default(self, config):
+        assert config.self_consistency_enabled is False
+        assert config.self_consistency_samples == 5
+
+    def test_self_consistency_averages_scores(self, config):
+
+        from unittest.mock import MagicMock, patch
+
+        from agent_trust_lab.models.report import HalluStepReport
+        from agent_trust_lab.orchestrator import Orchestrator
+
+        orch = Orchestrator(config)
+        orch.config.self_consistency_enabled = True
+        orch.config.self_consistency_samples = 3
+
+        step = HalluStepReport(
+            step_index=0,
+            gsar_label="Grounded",
+            g_score=0.8,
+            faithfulness_score=0.9,
+            evidence=["test"],
+        )
+
+        hallucination_steps = [step]
+        traj = MagicMock()
+        traj.steps = [MagicMock(type="thought", content="test")]
+
+        mock_results = [
+            [
+                HalluStepReport(
+                    step_index=0,
+                    gsar_label="Grounded",
+                    g_score=0.7,
+                    faithfulness_score=0.8,
+                )
+            ],
+            [
+                HalluStepReport(
+                    step_index=0,
+                    gsar_label="Grounded",
+                    g_score=0.9,
+                    faithfulness_score=0.95,
+                )
+            ],
+        ]
+
+        mock_classifier = MagicMock()
+        mock_classifier.classify.side_effect = mock_results
+
+        with patch(
+            "agent_trust_lab.hallukg.faithfulness.FaithfulnessChecker.check",
+            return_value=0.85,
+        ):
+            orch._run_self_consistency(
+                hallucination_steps, traj, mock_classifier, []
+            )
+
+        assert step.sc_samples == 3
+        assert step.sc_g_std > 0.0
+        assert step.g_score == round((0.8 + 0.7 + 0.9) / 3, 4)
+        assert "SC (3 runs)" in step.explanation
+

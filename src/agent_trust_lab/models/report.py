@@ -40,6 +40,13 @@ class HalluStepReport:
     evidence: List[str] = field(default_factory=list)
     explanation: str = ""
     anchor_type: str = "none"  # semantic/token_overlap/multi_hop/none
+    nli_score: float = 0.0
+    gsar_nli_disagreement: float = 0.0
+    sc_samples: int = 0
+    sc_g_std: float = 0.0
+    sc_u_std: float = 0.0
+    sc_c_std: float = 0.0
+    sc_f_std: float = 0.0
 
 
 @dataclass
