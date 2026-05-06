@@ -252,12 +252,12 @@ class Orchestrator:
         from agent_trust_lab.hallukg.extractor import TripleExtractor
         from agent_trust_lab.hallukg.multi_hop import MultiHopReasoner
 
-        extractor = TripleExtractor(model=self.config.model)
+        extractor = TripleExtractor(model=self.config.model, strict_mode=self.config.strict_mode)
         reasoner = AnchoringReasoner(
             knowledge_base_path=self.config.anchor_kb,
             grounded_threshold=self.config.grounded_threshold,
         )
-        classifier = GSARClassifier(model=self.config.model)
+        classifier = GSARClassifier(model=self.config.model, strict_mode=self.config.strict_mode)
 
         skip_types = set(self.config.skip_extract_types)
         all_triples = []
@@ -311,7 +311,9 @@ class Orchestrator:
             from agent_trust_lab.hallukg.code_checker import CodeHalluChecker
 
             code_checker = CodeHalluChecker(
-                timeout=self.config.timeout, docker_host=self.config.docker_host
+                timeout=self.config.timeout,
+                docker_host=self.config.docker_host,
+                strict_mode=self.config.strict_mode,
             )
             code_hallus = code_checker.batch_check(trajectory)
 

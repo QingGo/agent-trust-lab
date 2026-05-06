@@ -1,10 +1,29 @@
 import tempfile
 from pathlib import Path
 from typing import Generator
+from unittest import mock
 
 import pytest
 
 from agent_trust_lab.traps.manager import TrapManager
+
+
+@pytest.fixture
+def mock_no_api_key():
+    """Mock get_api_key to return None (no API key available)."""
+    with mock.patch("agent_trust_lab.llm.get_api_key", return_value=None):
+        yield
+
+
+@pytest.fixture
+def mock_docker_client():
+    """Mock Docker client with a MagicMock that responds to ping()."""
+    mock_client = mock.MagicMock()
+    mock_client.ping.return_value = True
+    with mock.patch(
+        "agent_trust_lab.sandbox.image.get_docker_client", return_value=mock_client
+    ):
+        yield mock_client
 
 
 @pytest.fixture

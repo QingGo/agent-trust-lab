@@ -49,6 +49,7 @@ class LangChainHarness(AgentHarness):
     base_url: str = ""
     thinking_enabled: bool = False
     reasoning_effort: str = ""
+    strict_mode: bool = False
 
     @classmethod
     def from_config(cls, config: "EvaluationConfig") -> "LangChainHarness":
@@ -58,6 +59,7 @@ class LangChainHarness(AgentHarness):
             base_url=config.base_url,
             thinking_enabled=config.thinking_enabled,
             reasoning_effort=config.reasoning_effort,
+            strict_mode=config.strict_mode,
         )
 
     def run(
@@ -68,11 +70,34 @@ class LangChainHarness(AgentHarness):
         policy_rules: Optional[List[str]] = None,
         state_snapshot_paths: Optional[List[str]] = None,
     ) -> SecureTrajectory:
-        try:
-            return self._run_with_llm(task, tools, max_steps, policy_rules)
-        except Exception as e:
-            logger.warning("LangChainHarness LLM call failed, falling back to stub: %s", e)
-            return self._run_stub(task, tools, max_steps, policy_rules, error=str(e))
+        from agent_trust_lab.llm import _RETRYABLE_ERRORS
+
+        last_error = ""
+        for attempt in range(3):
+            try:
+                return self._run_with_llm(task, tools, max_steps, policy_rules)
+            except _RETRYABLE_ERRORS as e:
+                last_error = str(e)
+                if attempt == 2:
+                    logger.warning(
+                        "LangChainHarness LLM call failed after 3 attempts, "
+                        "falling back to stub: %s", e
+                    )
+                    if self.strict_mode:
+                        raise
+                else:
+                    logger.warning(
+                        "LangChainHarness retry %d/3: %s", attempt + 1, e
+                    )
+                    import time
+                    time.sleep(1.0 * (attempt + 1))
+            except Exception as e:
+                last_error = str(e)
+                logger.warning("LangChainHarness LLM call failed, falling back to stub: %s", e)
+                if self.strict_mode:
+                    raise
+                break
+        return self._run_stub(task, tools, max_steps, policy_rules, error=last_error)
 
     def _run_with_llm(
         self,
@@ -425,6 +450,7 @@ class CodexHarness(AgentHarness):
     base_url: str = ""
     thinking_enabled: bool = False
     reasoning_effort: str = ""
+    strict_mode: bool = False
 
     @classmethod
     def from_config(cls, config: "EvaluationConfig") -> "CodexHarness":
@@ -435,6 +461,7 @@ class CodexHarness(AgentHarness):
             base_url=config.base_url,
             thinking_enabled=config.thinking_enabled,
             reasoning_effort=config.reasoning_effort,
+            strict_mode=config.strict_mode,
         )
 
     def run(
@@ -445,11 +472,34 @@ class CodexHarness(AgentHarness):
         policy_rules: Optional[List[str]] = None,
         state_snapshot_paths: Optional[List[str]] = None,
     ) -> SecureTrajectory:
-        try:
-            return self._run_with_llm(task, tools, max_steps, policy_rules)
-        except Exception as e:
-            logger.warning("CodexHarness LLM call failed, falling back to stub: %s", e)
-            return self._run_stub(task, tools, max_steps, policy_rules, error=str(e))
+        from agent_trust_lab.llm import _RETRYABLE_ERRORS
+
+        last_error = ""
+        for attempt in range(3):
+            try:
+                return self._run_with_llm(task, tools, max_steps, policy_rules)
+            except _RETRYABLE_ERRORS as e:
+                last_error = str(e)
+                if attempt == 2:
+                    logger.warning(
+                        "CodexHarness LLM call failed after 3 attempts, "
+                        "falling back to stub: %s", e
+                    )
+                    if self.strict_mode:
+                        raise
+                else:
+                    logger.warning(
+                        "CodexHarness retry %d/3: %s", attempt + 1, e
+                    )
+                    import time
+                    time.sleep(1.0 * (attempt + 1))
+            except Exception as e:
+                last_error = str(e)
+                logger.warning("CodexHarness LLM call failed, falling back to stub: %s", e)
+                if self.strict_mode:
+                    raise
+                break
+        return self._run_stub(task, tools, max_steps, policy_rules, error=last_error)
 
     def _run_with_llm(
         self,

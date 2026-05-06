@@ -75,6 +75,17 @@ class EmbeddingEngine:
             return None
 
 
+_embedding_engine: Optional[EmbeddingEngine] = None
+
+
+def _get_embedding_engine() -> EmbeddingEngine:
+    """Return module-level singleton EmbeddingEngine (ONNX model loaded once)."""
+    global _embedding_engine
+    if _embedding_engine is None:
+        _embedding_engine = EmbeddingEngine()
+    return _embedding_engine
+
+
 class AnchoringReasoner:
     """Anchor extracted triples against a knowledge base.
 
@@ -93,7 +104,7 @@ class AnchoringReasoner:
         self.knowledge_base_path = knowledge_base_path
         self.code_index_path = code_index_path
         self.grounded_threshold = grounded_threshold
-        self._embedder = EmbeddingEngine()
+        self._embedder = _get_embedding_engine()
 
     def anchor(self, triple: Dict[str, Any], knowledge_text: str = "") -> Dict[str, Any]:
         subject = str(triple.get("subject", ""))

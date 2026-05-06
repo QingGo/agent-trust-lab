@@ -1,4 +1,4 @@
-.PHONY: help lint format test-unit test-all test-manager test-models test-mutator smoke clean install test-integration test-docker test-slow test-e2e
+.PHONY: help lint format test-unit test-all test-manager test-models test-mutator smoke clean install test-integration test-docker test-slow test-e2e install-onnx
 
 # Default target
 help:
@@ -6,8 +6,8 @@ help:
 	@echo ""
 	@echo "  make lint            ruff check (L0, <0.2s)"
 	@echo "  make format          ruff format"
-	@echo "  make test-unit       fast tests only (L1, <1s)"
-	@echo "  make test-all        full suite incl. YAML I/O (~1.2s)"
+	@echo "  make test-unit       all tests except integration/docker/slow/e2e (L1)"
+	@echo "  make test-all        full suite incl. YAML I/O (~180s)"
 	@echo "  make test-manager    trap manager tests only"
 	@echo "  make test-models     model validation tests only"
 	@echo "  make test-mutator    mutator tests only"
@@ -15,8 +15,10 @@ help:
 	@echo "  make test-docker     Docker integration tests"
 	@echo "  make test-slow       ONNX integration tests"
 	@echo "  make test-e2e        full E2E tests"
-	@echo "  make smoke           CLI validate-traps (L4)"
+	@echo "  make smoke           validate-traps + log/llm tests (L4)"
+	@echo "  make clean           remove cache files"
 	@echo "  make install         editable install with Tsinghua mirror"
+	@echo "  make install-onnx    install ONNX deps (pip, not uv)"
 
 VENV = .venv
 PYTHON = $(VENV)/bin/python
@@ -42,9 +44,9 @@ typecheck:
 format:
 	$(RUFF) format src/ tests/
 
-# L1: fast unit tests (model + mutator, <0.2s), skip real-trap YAML I/O
+# L1: all non-integration tests, skips slow/expensive suites
 test-unit:
-	$(PYTHON) -m pytest tests/test_models.py tests/test_trap_mutator.py -v
+	$(PYTHON) -m pytest tests/ -v -m "not integration and not docker and not slow and not e2e"
 
 # L1: individual test files
 test-models:
@@ -56,7 +58,7 @@ test-mutator:
 test-manager:
 	$(PYTHON) -m pytest tests/test_trap_manager.py -v
 
-# L1: full test suite (~1.2s)
+# L1: full test suite (~180s)
 test-all:
 	$(PYTHON) -m pytest tests/ -v
 
@@ -80,3 +82,13 @@ test-slow:
 # L4: full E2E tests (needs API key + Docker + ONNX)
 test-e2e:
 	$(PYTHON) -m pytest tests/integration/ -v -m "e2e"
+
+# DevEx: remove cache files
+clean:
+	find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
+	find . -type f -name '*.pyc' -delete 2>/dev/null || true
+	rm -rf .pytest_cache 2>/dev/null || true
+
+# DevEx: install ONNX dependencies (use pip, not uv — uv<0.9.19 macOS tag bug)
+install-onnx:
+	$(PYTHON) -m pip install onnxruntime tokenizers --index-url $(MIRROR)

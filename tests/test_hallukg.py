@@ -286,6 +286,9 @@ class TestAnchoringReasonerSemantic:
     @pytest.fixture(autouse=True)
     def _mock_embedding_engine(self):
         """Mock EmbeddingEngine so we control embeddings deterministically."""
+        import agent_trust_lab.hallukg.anchoring as _anchoring
+
+        _anchoring._embedding_engine = None
         with patch("agent_trust_lab.hallukg.anchoring.EmbeddingEngine") as mock_cls:
             mock_instance = mock_cls.return_value
             mock_instance.is_available = True
@@ -690,7 +693,9 @@ class TestGSARClassifier:
 class TestFaithfulnessChecker:
     @pytest.fixture(autouse=True)
     def _disable_onnx_nli(self):
-        with patch.object(FaithfulnessChecker, "_check_onnx", return_value=False):
+        with patch(
+            "agent_trust_lab.hallukg.faithfulness._ensure_nli_loaded", return_value=False
+        ):
             yield
 
     def test_check_returns_float_between_0_and_1(self):

@@ -34,19 +34,29 @@ class GSARClassifier:
     Session 9: Added classify_multi_model() for multi-model voting.
     """
 
-    def __init__(self, model: str = ""):
+    def __init__(self, model: str = "", strict_mode: bool = False):
         self.model = model or DEFAULT_MODEL
+        self.strict_mode = strict_mode
 
     def classify(
         self,
         steps: list,
         anchored_triples: List[Dict[str, Any]],
     ) -> List[HalluStepReport]:
+        from agent_trust_lab.llm import _RETRYABLE_ERRORS, retry_with_backoff
+
         try:
-            return self._classify_with_llm(steps, anchored_triples)
+            return retry_with_backoff(
+                lambda: self._classify_with_llm(steps, anchored_triples)
+            )
+        except _RETRYABLE_ERRORS:
+            if self.strict_mode:
+                raise
         except Exception as e:
             logger.warning("GSARClassifier LLM call failed, falling back to stub: %s", e)
-            return self._classify_stub(steps)
+            if self.strict_mode:
+                raise
+        return self._classify_stub(steps)
 
     def classify_multi_model(
         self,
@@ -96,13 +106,18 @@ class GSARClassifier:
                     steps=steps,
                     triples=anchored_triples,
                 ):
+                    from agent_trust_lab.llm import _RETRYABLE_ERRORS, retry_with_backoff
+
                     try:
-                        return clf._classify_with_llm(steps, triples)
+                        return retry_with_backoff(
+                            lambda: clf._classify_with_llm(steps, triples)
+                        )
+                    except _RETRYABLE_ERRORS:
+                        pass
                     except Exception as e:
                         logger.warning(
                             "GSAR classification failed for model %s: %s", model, e
                         )
-                        pass
                     try:
                         return clf._classify_stub(steps)
                     except Exception:

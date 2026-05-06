@@ -35,10 +35,12 @@ class CodeHalluChecker:
         timeout: int = 30,
         docker_host: str = "",
         python_image: str = "",
+        strict_mode: bool = False,
     ):
         self.timeout = timeout
         self.docker_host = docker_host
         self.python_image = python_image or _DEFAULT_PYTHON_IMAGE
+        self.strict_mode = strict_mode
 
     def check(
         self,
@@ -63,6 +65,8 @@ class CodeHalluChecker:
             )
         except Exception as e:
             logger.warning("CodeHalluChecker Docker execution failed, falling back to stub: %s", e)
+            if self.strict_mode:
+                raise
             return self._stub_check(code, expected_error, step_index=step_index)
 
     def batch_check(self, trajectory: SecureTrajectory) -> List[CodeHalluReport]:

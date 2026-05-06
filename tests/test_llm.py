@@ -6,6 +6,7 @@ from agent_trust_lab.llm import (
     create_openai_client,
     get_api_key,
     get_base_url,
+    retry_with_backoff,
 )
 from agent_trust_lab.llm import (
     test_connection as _test_connection,
@@ -86,7 +87,7 @@ class TestCreateOpenaiClient:
 
             assert client is mock_client
             mock_openai.assert_called_once_with(
-                api_key="sk-override", base_url="https://custom.com"
+                api_key="sk-override", base_url="https://custom.com", max_retries=3
             )
 
     def test_uses_env_when_no_explicit_args(self, monkeypatch):
@@ -96,7 +97,7 @@ class TestCreateOpenaiClient:
         with mock.patch("agent_trust_lab.llm.OpenAI") as mock_openai:
             create_openai_client()
             mock_openai.assert_called_once_with(
-                api_key="sk-env", base_url=_DEFAULT_BASE_URL
+                api_key="sk-env", base_url=_DEFAULT_BASE_URL, max_retries=3
             )
 
     def test_passes_empty_key_when_no_key_available(self, monkeypatch):
@@ -107,7 +108,7 @@ class TestCreateOpenaiClient:
         with mock.patch("agent_trust_lab.llm.OpenAI") as mock_openai:
             create_openai_client()
             mock_openai.assert_called_once_with(
-                api_key="", base_url=_DEFAULT_BASE_URL
+                api_key="", base_url=_DEFAULT_BASE_URL, max_retries=3
             )
 
 
@@ -128,6 +129,7 @@ class TestCreateLangchainLlm:
                 api_key="sk-custom",
                 base_url="https://custom.api",
                 temperature=0.5,
+                max_retries=3,
             )
 
     def test_uses_default_model(self, monkeypatch):
@@ -254,3 +256,92 @@ class TestTestConnection:
             mock_create.assert_called_once_with(
                 model="custom-model", api_key="", base_url="https://custom.com"
             )
+
+
+class TestRetryWithBackoff:
+    def test_succeeds_on_first_attempt(self):
+        call_count = [0]
+
+        def _func():
+            call_count[0] += 1
+            return "ok"
+
+        result = retry_with_backoff(_func, max_retries=3)
+        assert result == "ok"
+        assert call_count[0] == 1
+
+    def test_succeeds_on_second_attempt(self):
+        from openai import APIError
+
+        call_count = [0]
+        mock_request = mock.MagicMock()
+
+        def _func():
+            call_count[0] += 1
+            if call_count[0] < 2:
+                raise APIError("transient", request=mock_request, body=None)
+            return "recovered"
+
+        result = retry_with_backoff(_func, max_retries=3, base_delay=0.0)
+        assert result == "recovered"
+        assert call_count[0] == 2
+
+    def test_raises_after_max_retries(self):
+        from openai import APIError
+
+        mock_request = mock.MagicMock()
+
+        def _func():
+            raise APIError("persistent", request=mock_request, body=None)
+
+        import pytest
+
+        with pytest.raises(APIError, match="persistent"):
+            retry_with_backoff(_func, max_retries=3, base_delay=0.0)
+
+    def test_rate_limit_error_is_retryable(self):
+        from openai import RateLimitError
+
+        call_count = [0]
+
+        def _func():
+            call_count[0] += 1
+            if call_count[0] < 3:
+                raise RateLimitError(
+                    "rate limited", response=mock.MagicMock(), body=None
+                )
+            return "ok"
+
+        result = retry_with_backoff(_func, max_retries=3, base_delay=0.0)
+        assert result == "ok"
+        assert call_count[0] == 3
+
+    def test_non_retryable_exception_not_caught(self):
+        def _func():
+            raise ValueError("not retryable")
+
+        import pytest
+
+        with pytest.raises(ValueError, match="not retryable"):
+            retry_with_backoff(_func, max_retries=3, base_delay=0.0)
+
+
+class TestTestConnectionRateLimit:
+    def test_rate_limit_error_returns_false(self, monkeypatch):
+        from openai import RateLimitError
+
+        monkeypatch.setenv("DEEPSEEK_API_KEY", "sk-test")
+
+        mock_client = mock.MagicMock()
+        mock_client.chat.completions.create.side_effect = RateLimitError(
+            "Rate limit exceeded",
+            response=mock.MagicMock(),
+            body=None,
+        )
+
+        with mock.patch(
+            "agent_trust_lab.llm.create_openai_client", return_value=mock_client
+        ):
+            success, msg = _test_connection()
+            assert success is False
+            assert "Rate limit" in msg

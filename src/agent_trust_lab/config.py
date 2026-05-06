@@ -34,6 +34,7 @@ class EvaluationConfig:
     test_suite_path: Optional[str] = None
     dry_run: bool = False
     skip_hallukg: bool = False
+    strict_mode: bool = False
     timeout: int = 120
     skip_extract_types: List[str] = field(default_factory=lambda: ["action", "error"])
     grounded_threshold: float = 0.3

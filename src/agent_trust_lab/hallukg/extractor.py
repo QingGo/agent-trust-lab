@@ -25,15 +25,28 @@ class TripleExtractor:
     Falls back to stub on any API error.
     """
 
-    def __init__(self, model: str = "", model_name: str = ""):
+    def __init__(self, model: str = "", model_name: str = "", strict_mode: bool = False):
         self.model = model or model_name or "gpt-4o-mini"
+        self.strict_mode = strict_mode
 
     def extract(self, text: str) -> List[Dict[str, Any]]:
+        from agent_trust_lab.llm import _RETRYABLE_ERRORS, retry_with_backoff
+
         try:
-            return self._extract_with_llm(text)
+            return retry_with_backoff(
+                lambda: self._extract_with_llm(text)
+            )
+        except _RETRYABLE_ERRORS:
+            if self.strict_mode:
+                raise
         except Exception as e:
-            logger.warning("TripleExtractor LLM call failed, falling back to stub: %s", e)
-            return self._extract_stub(text)
+            logger.warning(
+                "TripleExtractor LLM call failed after retries, "
+                "falling back to stub: %s", e
+            )
+            if self.strict_mode:
+                raise
+        return self._extract_stub(text)
 
     def _extract_with_llm(self, text: str) -> List[Dict[str, Any]]:
         import instructor
