@@ -1209,7 +1209,12 @@ class ReportGenerator:
         lang_dict = self._get_lang(lang)
 
         traps = self._enrich_traps(raw_results, calibration=calibration)
-        summary = self._compute_summary(raw_results, calibration=calibration, data=data)
+        if configs:
+            diff_weights = configs[0].get("difficulty_weights", {}) if configs else {}
+        else:
+            diff_weights = config.get("difficulty_weights", {})
+        summary = self._compute_summary(raw_results, calibration=calibration, data=data,
+                                        difficulty_weights=diff_weights)
         generated_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
 
         share_card_html = self._render_share_card(
@@ -1312,7 +1317,13 @@ class ReportGenerator:
         lang_dict = self._get_lang(lang)
 
         traps = self._enrich_traps(raw_results, calibration=calibration)
-        summary = self._compute_summary(raw_results, calibration=calibration, data=data)
+        configs = data.get("configs", None)
+        if configs:
+            diff_weights = configs[0].get("difficulty_weights", {}) if configs else {}
+        else:
+            diff_weights = config.get("difficulty_weights", {})
+        summary = self._compute_summary(raw_results, calibration=calibration, data=data,
+                                        difficulty_weights=diff_weights)
         generated_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
 
         lines: List[str] = []
@@ -1582,6 +1593,7 @@ class ReportGenerator:
         raw_results: List[Dict[str, Any]],
         calibration: Optional[Dict[str, Any]] = None,
         data: Optional[Dict[str, Any]] = None,
+        difficulty_weights: Optional[Dict[str, float]] = None,
     ) -> Dict[str, Any]:
         is_multi = bool(data and data.get("configs"))
         total = len(raw_results)
@@ -1666,7 +1678,7 @@ class ReportGenerator:
             model_stats: List[Dict[str, Any]] = []
             for cfg in configs:
                 label = cfg.get("config_label", cfg.get("model", ""))
-                stats = ReportGenerator._per_model_stats(raw_results, label)
+                stats = ReportGenerator._per_model_stats(raw_results, label, difficulty_weights)
                 if stats:
                     stats["model"] = cfg.get("model", "")
                     stats["config_label"] = label
@@ -1689,51 +1701,67 @@ class ReportGenerator:
         return summary
 
     @staticmethod
-    def _per_model_stats(raw_results: List[Dict[str, Any]], model_label: str) -> Optional[Dict]:
+    def _per_model_stats(
+        raw_results: List[Dict[str, Any]],
+        model_label: str,
+        difficulty_weights: Optional[Dict[str, float]] = None,
+    ) -> Optional[Dict]:
         g_list: List[float] = []
         u_list: List[float] = []
         c_list: List[float] = []
         f_list: List[float] = []
         passes = 0
         total = 0
+        weights: Dict[str, float] = difficulty_weights or {}
         for r in raw_results:
             scores = r.get("scores", {})
             entry = scores.get(model_label)
             if entry is None:
                 continue
             total += 1
+            difficulty = r.get("metadata", {}).get("difficulty", "")
+            weight = weights.get(difficulty, 1.0)
             comp = entry.get("compliance")
             if comp and comp.get("overall") == "pass":
-                passes += 1
+                passes += weight
+            else:
+                passes += weight * 0
             hallu = entry.get("hallucination")
             if hallu:
                 g_val = hallu.get("avg_g_score")
-                g_list.append(g_val if g_val is not None else 0.0)
+                g_list.append((g_val if g_val is not None else 0.0) * weight)
                 u_val = hallu.get("avg_u_score")
                 if u_val is not None:
-                    u_list.append(u_val)
+                    u_list.append(u_val * weight)
                 else:
                     steps = hallu.get("steps", [])
                     svals = [s.get("u_score", 0) for s in steps if s.get("u_score") is not None]
-                    u_list.append(sum(svals) / len(svals) if svals else 0.0)
+                    u_list.append((sum(svals) / len(svals) if svals else 0.0) * weight)
                 c_val = hallu.get("avg_c_score")
                 if c_val is not None:
-                    c_list.append(c_val)
+                    c_list.append(c_val * weight)
                 else:
                     steps = hallu.get("steps", [])
                     svals = [s.get("c_score", 0) for s in steps if s.get("c_score") is not None]
-                    c_list.append(sum(svals) / len(svals) if svals else 0.0)
+                    c_list.append((sum(svals) / len(svals) if svals else 0.0) * weight)
                 f_val = hallu.get("avg_faithfulness")
-                f_list.append(f_val if f_val is not None else 0.0)
+                f_list.append((f_val if f_val is not None else 0.0) * weight)
         if total == 0:
             return None
+        weight_sum = sum(
+            weights.get(r.get("metadata", {}).get("difficulty", ""), 1.0)
+            for r in raw_results
+            if r.get("scores", {}).get(model_label)
+        )
+        if weight_sum == 0:
+            weight_sum = float(total)
         return {
             "total": total,
-            "pass_pct": passes / total * 100 if total else 0,
-            "avg_g": sum(g_list) / len(g_list) if g_list else 0,
-            "avg_u": sum(u_list) / len(u_list) if u_list else 0,
-            "avg_c": sum(c_list) / len(c_list) if c_list else 0,
-            "avg_f": sum(f_list) / len(f_list) if f_list else 0,
+            "pass_pct": passes / weight_sum * 100 if weight_sum else 0,
+            "avg_g": sum(g_list) / weight_sum if g_list else 0,
+            "avg_u": sum(u_list) / weight_sum if u_list else 0,
+            "avg_c": sum(c_list) / weight_sum if c_list else 0,
+            "avg_f": sum(f_list) / weight_sum if f_list else 0,
         }
 
     @staticmethod

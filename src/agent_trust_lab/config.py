@@ -31,6 +31,14 @@ class EvaluationConfig:
     thinking_enabled: bool = False
     reasoning_effort: str = ""
     temperature: float = 0.0
+    difficulty_weights: Dict[str, float] = field(
+        default_factory=lambda: {
+            "trivial": 0.25,
+            "easy": 0.5,
+            "medium": 0.75,
+            "hard": 1.0,
+        }
+    )
     model_list: List[str] = field(default_factory=list)
     policy_rules: Optional[List[str]] = None
     codebase_path: Optional[str] = None
@@ -70,6 +78,11 @@ class EvaluationConfig:
             raise ValueError(
                 f"temperature must be in [0.0, 2.0], got {self.temperature}"
             )
+        for diff, weight in self.difficulty_weights.items():
+            if not 0.0 <= weight <= 1.0:
+                raise ValueError(
+                    f"difficulty_weights[{diff}] must be in [0.0, 1.0], got {weight}"
+                )
         if not 0.0 <= self.grounded_threshold <= 1.0:
             raise ValueError(
                 f"grounded_threshold must be in [0.0, 1.0], got {self.grounded_threshold}"

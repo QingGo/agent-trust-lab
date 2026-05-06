@@ -43,6 +43,7 @@ class EvaluationResult:
             "trap_id": self.trap_id,
             "trap_type": self.trap_type,
             "category": self.category,
+            "difficulty": self.metadata.get("difficulty", ""),
             "steps_count": len(self.trajectory.steps),
             "security_events": len(self.trajectory.security_events),
             "policy_rules_applied": self.trajectory.policy_rules_applied,
@@ -960,6 +961,7 @@ class Orchestrator:
                 "sandbox": self.config.sandbox,
                 "thinking_enabled": self.config.thinking_enabled,
                 "reasoning_effort": self.config.reasoning_effort,
+                "difficulty_weights": self.config.difficulty_weights,
             },
             "results": [r.summary() for r in results],
         }

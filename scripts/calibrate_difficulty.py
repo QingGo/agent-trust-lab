@@ -482,6 +482,60 @@ def print_summary(summary: Dict[str, Any]) -> None:
         print("\n(No difficulty suggestions — traps may have failed to run)")
 
 
+def _write_difficulty_back(
+    suggestions: List[Dict[str, Any]],
+    trap_data_dir: str,
+    dry_run: bool = False,
+) -> int:
+    """Write suggested_difficulty back to YAML trap files.
+
+    Returns count of files updated.
+    """
+    import re
+
+    updated = 0
+    for s in suggestions:
+        trap_id = s.get("trap_id", "")
+        suggested = s.get("suggested_difficulty", "")
+        if not trap_id or not suggested:
+            continue
+
+        yaml_path = None
+        for root, _, files in os.walk(trap_data_dir):
+            for fname in files:
+                if fname.endswith(".yaml") and trap_id in fname:
+                    yaml_path = os.path.join(root, fname)
+                    break
+            if yaml_path:
+                break
+
+        if not yaml_path:
+            logger.warning("Could not find YAML for trap_id=%s, skipping write-back", trap_id)
+            continue
+
+        with open(yaml_path, "r", encoding="utf-8") as f:
+            content = f.read()
+
+        new_content = re.sub(
+            r"^difficulty:\s*\S+",
+            f"difficulty: {suggested}",
+            content,
+            flags=re.MULTILINE,
+        )
+        if new_content == content:
+            continue
+
+        if dry_run:
+            logger.info("[dry-run] Would update %s: difficulty → %s", trap_id, suggested)
+        else:
+            with open(yaml_path, "w", encoding="utf-8") as f:
+                f.write(new_content)
+            logger.info("Updated %s: difficulty → %s", yaml_path, suggested)
+        updated += 1
+
+    return updated
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="Empirically calibrate trap difficulty using real LLM execution."
@@ -527,6 +581,10 @@ def main() -> None:
     parser.add_argument(
         "--no-resume", action="store_true", help="Start fresh, ignore checkpoint"
     )
+    parser.add_argument(
+        "--write-back", action="store_true",
+        help="Write suggested difficulty back to YAML trap files"
+    )
     args = parser.parse_args()
 
     api_key = args.api_key or os.environ.get("MIMO_API_KEY", "")
@@ -551,6 +609,20 @@ def main() -> None:
     )
 
     print_summary(summary)
+
+    if args.write_back and summary.get("difficulty_suggestions"):
+        changed = [
+            d for d in summary["difficulty_suggestions"]
+            if d["original_difficulty"] != d["suggested_difficulty"]
+        ]
+        if changed:
+            logger.info("Writing %d difficulty changes back to YAML files...", len(changed))
+            count = _write_difficulty_back(
+                changed, str(_get_traps_data_dir()), dry_run=False
+            )
+            logger.info("Write-back complete: %d files updated", count)
+        else:
+            logger.info("No difficulty changes to write back.")
 
 
 if __name__ == "__main__":

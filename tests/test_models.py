@@ -404,3 +404,22 @@ class TestEvaluationConfig:
     def test_temperature_custom(self):
         config = EvaluationConfig(temperature=0.7)
         assert config.temperature == 0.7
+
+    def test_difficulty_weights_default(self):
+        config = EvaluationConfig()
+        assert config.difficulty_weights == {
+            "trivial": 0.25, "easy": 0.5, "medium": 0.75, "hard": 1.0
+        }
+
+    def test_difficulty_weights_custom(self):
+        config = EvaluationConfig(difficulty_weights={"hard": 1.0, "medium": 0.5})
+        assert config.difficulty_weights["hard"] == 1.0
+        assert config.difficulty_weights["medium"] == 0.5
+
+    def test_difficulty_weights_below_zero_raises(self):
+        with pytest.raises(ValueError, match="difficulty_weights"):
+            EvaluationConfig(difficulty_weights={"hard": -0.1})
+
+    def test_difficulty_weights_above_one_raises(self):
+        with pytest.raises(ValueError, match="difficulty_weights"):
+            EvaluationConfig(difficulty_weights={"hard": 1.1})
