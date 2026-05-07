@@ -245,6 +245,12 @@ class GSARClassifier:
             extra_body={"thinking": {"type": "disabled"}},
         )
 
+        from agent_trust_lab.llm import capture_usage
+
+        raw = getattr(result, "_raw_response", None)
+        if raw and hasattr(raw, "usage") and raw.usage:
+            capture_usage(raw, self.model)
+
         reports: List[HalluStepReport] = []
         for s in result.steps:
             reports.append(

@@ -423,3 +423,23 @@ class TestEvaluationConfig:
     def test_difficulty_weights_above_one_raises(self):
         with pytest.raises(ValueError, match="difficulty_weights"):
             EvaluationConfig(difficulty_weights={"hard": 1.1})
+
+    def test_injection_template_default(self):
+        config = EvaluationConfig()
+        assert config.injection_template == "system_note"
+
+    def test_injection_template_custom(self):
+        config = EvaluationConfig(injection_template="colleague")
+        assert config.injection_template == "colleague"
+
+    def test_with_base_url_auto_judge_model(self):
+        config = EvaluationConfig(model="mimo-v2.5-pro", base_url="https://example.com/v1")
+        assert config.judge_model == "deepseek-v4-flash"
+
+    def test_with_base_url_explicit_judge_model(self):
+        config = EvaluationConfig(
+            model="mimo-v2.5-pro",
+            base_url="https://example.com/v1",
+            judge_model="gpt-4o",
+        )
+        assert config.judge_model == "gpt-4o"

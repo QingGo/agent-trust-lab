@@ -43,6 +43,7 @@ class EnhancedTrapDef(BaseModel):
     knowledge_source: Optional[str] = None
     context: Optional[str] = None
     trap_injection: str = ""
+    injection_template: str = "system_note"
     expected_violation_signature: Optional[str] = None
     expected_behavior: Optional[str] = None
     judgement_hint: Optional[str] = None

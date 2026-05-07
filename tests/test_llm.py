@@ -34,6 +34,7 @@ class TestGetApiKey:
 
     def test_openai_fallback_when_no_deepseek(self, monkeypatch):
         monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
+        monkeypatch.delenv("MIMO_API_KEY", raising=False)
         monkeypatch.delenv("OPENAI_API_KEY", raising=False)
         monkeypatch.setenv("OPENAI_API_KEY", "sk-openai")
         assert get_api_key() == "sk-openai"
@@ -51,8 +52,32 @@ class TestGetApiKey:
 
     def test_no_key_returns_none(self, monkeypatch):
         monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
+        monkeypatch.delenv("MIMO_API_KEY", raising=False)
         monkeypatch.delenv("OPENAI_API_KEY", raising=False)
         assert get_api_key() is None
+
+    def test_mimo_priority_with_model_hint(self, monkeypatch):
+        monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
+        monkeypatch.delenv("MIMO_API_KEY", raising=False)
+        monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+        monkeypatch.setenv("DEEPSEEK_API_KEY", "sk-deepseek")
+        monkeypatch.setenv("MIMO_API_KEY", "sk-mimo")
+        assert get_api_key(model="mimo-v2.5-pro") == "sk-mimo"
+
+    def test_mimo_not_checked_before_deepseek_without_model_hint(self, monkeypatch):
+        monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
+        monkeypatch.delenv("MIMO_API_KEY", raising=False)
+        monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+        monkeypatch.setenv("DEEPSEEK_API_KEY", "sk-deepseek")
+        monkeypatch.setenv("MIMO_API_KEY", "sk-mimo")
+        assert get_api_key() == "sk-deepseek"
+
+    def test_mimo_fallback_when_no_deepseek(self, monkeypatch):
+        monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
+        monkeypatch.delenv("MIMO_API_KEY", raising=False)
+        monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+        monkeypatch.setenv("MIMO_API_KEY", "sk-mimo")
+        assert get_api_key() == "sk-mimo"
 
 
 class TestGetBaseUrl:
@@ -102,6 +127,7 @@ class TestCreateOpenaiClient:
 
     def test_passes_empty_key_when_no_key_available(self, monkeypatch):
         monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
+        monkeypatch.delenv("MIMO_API_KEY", raising=False)
         monkeypatch.delenv("OPENAI_API_KEY", raising=False)
         monkeypatch.delenv("DEEPSEEK_BASE_URL", raising=False)
 
@@ -155,6 +181,7 @@ class TestCreateLangchainLlm:
 class TestTestConnection:
     def test_no_api_key_returns_false(self, monkeypatch):
         monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
+        monkeypatch.delenv("MIMO_API_KEY", raising=False)
         monkeypatch.delenv("OPENAI_API_KEY", raising=False)
 
         success, msg = _test_connection()

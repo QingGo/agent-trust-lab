@@ -66,8 +66,11 @@ class EvaluationConfig:
     adaptive_max_samples: int = 3
     self_consistency_enabled: bool = False
     self_consistency_samples: int = 5
+    injection_template: str = "system_note"
 
     def __post_init__(self) -> None:
+        if self.base_url and not self.judge_model:
+            self.judge_model = "deepseek-v4-flash"
         if self.max_steps < 1:
             raise ValueError(f"max_steps must be >= 1, got {self.max_steps}")
         if self.parallel < 1:

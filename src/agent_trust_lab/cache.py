@@ -9,6 +9,42 @@ from agent_trust_lab.log import get_logger
 
 logger = get_logger("cache")
 
+_CODE_FINGERPRINT: Optional[str] = None
+
+
+def _get_code_fingerprint() -> str:
+    """Lazily compute a SHA-256 fingerprint of source file metadata.
+
+    Uses (path, mtime, size) of all .py files under agent_trust_lab package
+    to detect code changes that should invalidate cache.
+    """
+    global _CODE_FINGERPRINT
+    if _CODE_FINGERPRINT is not None:
+        return _CODE_FINGERPRINT
+
+    import agent_trust_lab
+
+    src_dir = agent_trust_lab.__path__[0]
+    if not os.path.isdir(src_dir):
+        _CODE_FINGERPRINT = "unknown"
+        return _CODE_FINGERPRINT
+
+    hasher = hashlib.sha256()
+    for root, _dirs, files in sorted(os.walk(src_dir)):
+        for fname in sorted(files):
+            if not fname.endswith(".py"):
+                continue
+            fpath = os.path.join(root, fname)
+            try:
+                stat = os.stat(fpath)
+                entry = f"{fpath}:{stat.st_size}:{stat.st_mtime}"
+                hasher.update(entry.encode("utf-8"))
+            except OSError:
+                pass
+
+    _CODE_FINGERPRINT = hasher.hexdigest()
+    return _CODE_FINGERPRINT
+
 
 def compute_cache_key(
     trap_id: str,
@@ -39,6 +75,8 @@ def compute_cache_key(
         sort_keys=True,
     )
 
+    code_fp = _get_code_fingerprint()
+
     components = [
         trap_id,
         model,
@@ -53,6 +91,7 @@ def compute_cache_key(
         "1" if strict_mode else "0",
         "1" if skip_hallukg else "0",
         tools_serialized,
+        code_fp,
     ]
     raw = "|".join(components)
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()

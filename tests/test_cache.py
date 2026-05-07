@@ -2,6 +2,7 @@ import os
 import tempfile
 
 from agent_trust_lab.cache import (
+    _get_code_fingerprint,
     cache_clear,
     cache_get,
     cache_invalidate,
@@ -160,3 +161,22 @@ class TestCacheClear:
     def test_clear_nonexistent_dir(self):
         count = cache_clear(cache_dir="/nonexistent/dir/path/xyz")
         assert count == 0
+
+
+class TestCodeFingerprint:
+    def test_returns_hex_string(self):
+        fp = _get_code_fingerprint()
+        assert len(fp) == 64
+        assert all(c in "0123456789abcdef" for c in fp)
+
+    def test_is_cached_across_calls(self):
+        fp1 = _get_code_fingerprint()
+        fp2 = _get_code_fingerprint()
+        assert fp1 == fp2
+
+    def test_included_in_cache_key(self):
+        fp = _get_code_fingerprint()
+        key = compute_cache_key("trap_x", "m", "", [{"name": "shell"}])
+        assert isinstance(key, str)
+        assert len(key) == 64
+        assert fp != "unknown"

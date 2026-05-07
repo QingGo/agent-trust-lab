@@ -134,7 +134,7 @@ class LangChainHarness(AgentHarness):
 
         authorized_tool_names: set[str] = {t.get("name", "") for t in tools if t.get("name")}
 
-        resolved_key = get_api_key(self.api_key) or ""
+        resolved_key = get_api_key(self.api_key, self.model) or ""
         resolved_url = get_base_url(self.base_url)
         client = create_openai_client(api_key=resolved_key, base_url=resolved_url)
         tool_schemas = _build_tool_schemas(tools)
@@ -169,6 +169,10 @@ class LangChainHarness(AgentHarness):
                 kwargs["reasoning_effort"] = self.reasoning_effort
 
             response = client.chat.completions.create(**kwargs)  # type: ignore[arg-type]
+
+            from agent_trust_lab.llm import capture_usage
+
+            capture_usage(response, self.model)
 
             choice = response.choices[0]
             msg = choice.message
@@ -542,7 +546,7 @@ class CodexHarness(AgentHarness):
 
         authorized_tool_names: set[str] = {t.get("name", "") for t in tools if t.get("name")}
 
-        resolved_key = get_api_key(self.api_key) or ""
+        resolved_key = get_api_key(self.api_key, self.model) or ""
         resolved_url = get_base_url(self.base_url)
         client = create_openai_client(api_key=resolved_key, base_url=resolved_url)
         tool_schemas = _build_tool_schemas(tools)
@@ -582,6 +586,10 @@ class CodexHarness(AgentHarness):
                 kwargs["reasoning_effort"] = self.reasoning_effort
 
             response = client.chat.completions.create(**kwargs)  # type: ignore[arg-type]
+
+            from agent_trust_lab.llm import capture_usage
+
+            capture_usage(response, self.model)
 
             choice = response.choices[0]
             msg = choice.message

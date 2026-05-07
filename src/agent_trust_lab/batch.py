@@ -31,6 +31,7 @@ class EvaluationSpec:
     base_url: str = ""
     api_key: str = ""
     skip_hallukg: bool = False
+    cache_enabled: bool = True
     traps: Dict[str, Any] = field(default_factory=dict)
 
 
@@ -103,6 +104,7 @@ def parse_batch_yaml(yaml_path: str) -> BatchConfig:
                 base_url=str(ev.get("base_url", "")),
                 api_key=str(ev.get("api_key", "")),
                 skip_hallukg=bool(ev.get("skip_hallukg", False)),
+                cache_enabled=bool(ev.get("cache_enabled", True)),
                 traps=traps,
             )
         )
@@ -138,6 +140,7 @@ def _run_single_eval(
         base_url=spec.base_url,
         api_key=spec.api_key,
         skip_hallukg=spec.skip_hallukg,
+        cache_enabled=spec.cache_enabled,
         sandbox=batch_config.sandbox,
         sandbox_image=batch_config.sandbox_image,
         sandbox_network=batch_config.sandbox_network,

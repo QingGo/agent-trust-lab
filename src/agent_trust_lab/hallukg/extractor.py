@@ -78,6 +78,13 @@ class TripleExtractor:
             ],
             extra_body={"thinking": {"type": "disabled"}},
         )
+
+        from agent_trust_lab.llm import capture_usage
+
+        raw = getattr(result, "_raw_response", None)
+        if raw and hasattr(raw, "usage") and raw.usage:
+            capture_usage(raw, self.model)
+
         return [t.model_dump() for t in result.triples]
 
     def _extract_stub(self, text: str) -> List[Dict[str, Any]]:

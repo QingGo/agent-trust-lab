@@ -1,6 +1,8 @@
 import os
+import threading
 import time
-from typing import Callable, Optional, TypeVar
+from dataclasses import dataclass
+from typing import Callable, Dict, Optional, TypeVar
 
 from dotenv import load_dotenv
 from openai import APIConnectionError, APIError, APITimeoutError, OpenAI, RateLimitError
@@ -18,14 +20,63 @@ logger = get_logger("llm")
 _T = TypeVar("_T")
 _RETRYABLE_ERRORS = (APIError, APIConnectionError, APITimeoutError, RateLimitError)
 
+_token_lock = threading.Lock()
+_token_usage: Dict[str, int] = {}
+_token_details: Dict[str, Dict[str, int]] = {}
 
-def get_api_key(api_key: str = "") -> Optional[str]:
-    """Resolve API key: explicit arg > DEEPSEEK_API_KEY env > OPENAI_API_KEY env."""
+
+@dataclass
+class TokenUsage:
+    model: str
+    prompt_tokens: int
+    completion_tokens: int
+    total_tokens: int
+
+
+def track_tokens(model: str, prompt_tokens: int, completion_tokens: int) -> None:
+    with _token_lock:
+        if model not in _token_usage:
+            _token_usage[model] = 0
+            _token_details[model] = {"prompt_tokens": 0, "completion_tokens": 0}
+        _token_usage[model] += prompt_tokens + completion_tokens
+        _token_details[model]["prompt_tokens"] += prompt_tokens
+        _token_details[model]["completion_tokens"] += completion_tokens
+
+
+def get_token_usage() -> Dict[str, Dict[str, int]]:
+    with _token_lock:
+        return {k: dict(v) for k, v in _token_details.items()}
+
+
+def reset_token_usage() -> None:
+    with _token_lock:
+        _token_usage.clear()
+        _token_details.clear()
+
+
+def capture_usage(response: ChatCompletion, model: str = "") -> None:
+    if response.usage:
+        track_tokens(
+            model or response.model,
+            response.usage.prompt_tokens,
+            response.usage.completion_tokens,
+        )
+
+
+def get_api_key(api_key: str = "", model: str = "") -> Optional[str]:
+    """Resolve API key: arg > model env > DEEPSEEK > MIMO > OPENAI env vars."""
     if api_key:
         return api_key
+    if model and "mimo" in model.lower():
+        mimo_key = os.environ.get("MIMO_API_KEY", "")
+        if mimo_key:
+            return mimo_key
     deepseek_key = os.environ.get("DEEPSEEK_API_KEY", "")
     if deepseek_key:
         return deepseek_key
+    mimo_key = os.environ.get("MIMO_API_KEY", "")
+    if mimo_key:
+        return mimo_key
     openai_key = os.environ.get("OPENAI_API_KEY", "")
     if openai_key:
         return openai_key
