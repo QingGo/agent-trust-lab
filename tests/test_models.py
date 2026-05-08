@@ -323,9 +323,9 @@ class TestEvaluationConfig:
         with pytest.raises(ValueError, match="timeout"):
             EvaluationConfig(timeout=0)
 
-    def test_judge_model_defaults_empty(self):
+    def test_judge_model_defaults_flash(self):
         config = EvaluationConfig()
-        assert config.judge_model == ""
+        assert config.judge_model == "deepseek-v4-flash"
 
     def test_judge_model_custom(self):
         config = EvaluationConfig(judge_model="deepseek-v4-pro")

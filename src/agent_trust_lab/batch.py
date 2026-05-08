@@ -32,6 +32,7 @@ class EvaluationSpec:
     api_key: str = ""
     skip_hallukg: bool = False
     cache_enabled: bool = True
+    judge_model: str = ""
     traps: Dict[str, Any] = field(default_factory=dict)
 
 
@@ -54,6 +55,7 @@ class BatchConfig:
     report_url: str = ""
     calibration_profile: Optional[str] = None
     timeout: int = 120
+    runs: int = 1
 
 
 def parse_batch_yaml(yaml_path: str) -> BatchConfig:
@@ -105,6 +107,7 @@ def parse_batch_yaml(yaml_path: str) -> BatchConfig:
                 api_key=str(ev.get("api_key", "")),
                 skip_hallukg=bool(ev.get("skip_hallukg", False)),
                 cache_enabled=bool(ev.get("cache_enabled", True)),
+                judge_model=str(ev.get("judge_model", "")),
                 traps=traps,
             )
         )
@@ -125,14 +128,37 @@ def parse_batch_yaml(yaml_path: str) -> BatchConfig:
         report_url=str(report_cfg.get("url", "")),
         calibration_profile=common.get("calibration_profile"),
         timeout=int(common.get("timeout", 120)),
+        runs=int(common.get("runs", 1)),
     )
 
 
 def _run_single_eval(
     spec: EvaluationSpec, batch_config: "BatchConfig"
 ) -> Tuple[str, List[EvaluationResult], str]:
-    """Run a single evaluation spec and return (safe_label, results, json_path)."""
-    config = EvaluationConfig(
+    """Run a single evaluation spec and return (safe_label, results, json_path).
+
+    Skips evaluation if the output JSON already exists with valid results.
+    """
+    safe_label = spec.label.replace(" ", "_").replace("/", "_")
+    json_path = os.path.join(batch_config.output_dir, f"{safe_label}.json")
+
+    if os.path.exists(json_path):
+        try:
+            with open(json_path, "r") as f:
+                data = json.load(f)
+            existing = data.get("results", data)
+            if isinstance(existing, list) and len(existing) > 0:
+                has_runs = any(r.get("runs_count", 0) >= batch_config.runs for r in existing[:3])
+                if has_runs or batch_config.runs <= 1:
+                    logger.info(
+                        "  -> Skipping %s (already completed: %d results)",
+                        safe_label, len(existing),
+                    )
+                    return safe_label, [], json_path
+        except Exception:
+            pass
+
+    config_kwargs: Dict[str, Any] = dict(
         model=spec.model,
         agent_type=spec.agent_type,
         thinking_enabled=spec.thinking_enabled,
@@ -149,13 +175,14 @@ def _run_single_eval(
         trap_library_path=batch_config.trap_library_path,
         calibration_profile=batch_config.calibration_profile,
         timeout=batch_config.timeout,
+        runs=batch_config.runs,
     )
+    if spec.judge_model:
+        config_kwargs["judge_model"] = spec.judge_model
+    config = EvaluationConfig(**config_kwargs)
 
-    safe_label = spec.label.replace(" ", "_").replace("/", "_")
     orch = Orchestrator(config)
     results = list(orch.run_traps(**spec.traps))
-
-    json_path = os.path.join(batch_config.output_dir, f"{safe_label}.json")
     orch.export_results(results, json_path)
     logger.info("  -> %d results saved to %s", len(results), json_path)
 

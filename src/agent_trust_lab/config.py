@@ -14,7 +14,7 @@ RESULT_CACHE_DIR = os.path.join(CACHE_ROOT, "results")
 class EvaluationConfig:
     agent_type: str = "langchain"
     model: str = DEFAULT_MODEL
-    judge_model: str = ""  # model used as GSAR judge; defaults to model when empty
+    judge_model: str = DEFAULT_MODEL
     api_key: str = ""
     base_url: str = ""
     sandbox: str = "docker"
@@ -67,10 +67,9 @@ class EvaluationConfig:
     self_consistency_enabled: bool = False
     self_consistency_samples: int = 5
     injection_template: str = "system_note"
+    runs: int = 1
 
     def __post_init__(self) -> None:
-        if self.base_url and not self.judge_model:
-            self.judge_model = "deepseek-v4-flash"
         if self.max_steps < 1:
             raise ValueError(f"max_steps must be >= 1, got {self.max_steps}")
         if self.parallel < 1:
@@ -114,3 +113,5 @@ class EvaluationConfig:
             raise ValueError(
                 f"self_consistency_samples must be >= 2, got {self.self_consistency_samples}"
             )
+        if self.runs < 1:
+            raise ValueError(f"runs must be >= 1, got {self.runs}")

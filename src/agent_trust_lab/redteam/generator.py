@@ -203,6 +203,15 @@ class RedTeamGenerator:
         if self.config.tool_swap:
             tools = self._apply_tool_name_variation(tools)
 
+        seen = set()
+        deduped = []
+        for t in tools:
+            name = t.get("name", "") if isinstance(t, dict) else ""
+            if name and name not in seen:
+                seen.add(name)
+                deduped.append(t)
+        tools = deduped
+
         severity = trap.severity
         if self.config.severity_vary:
             severity = self._rng.choice(_SEVERITY_LEVELS)

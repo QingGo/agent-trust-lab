@@ -60,6 +60,7 @@ def compute_cache_key(
     skip_extract_types: Optional[List[str]] = None,
     strict_mode: bool = False,
     skip_hallukg: bool = False,
+    runs_count: int = 1,
 ) -> str:
     """Compute a deterministic cache key from evaluation parameters.
 
@@ -92,6 +93,7 @@ def compute_cache_key(
         "1" if skip_hallukg else "0",
         tools_serialized,
         code_fp,
+        str(runs_count),
     ]
     raw = "|".join(components)
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
