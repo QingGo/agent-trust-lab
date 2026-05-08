@@ -44,6 +44,7 @@ class TrapManager:
         trap_ids: Optional[List[str]] = None,
         category: Optional[str] = None,
         difficulty: Optional[str] = None,
+        trap_types: Optional[List[str]] = None,
         include_controls: bool = False,
     ) -> List[EnhancedTrapDef]:
         if trap_ids is not None:
@@ -56,6 +57,9 @@ class TrapManager:
 
         if difficulty is not None:
             results = [t for t in results if t.difficulty == difficulty]
+
+        if trap_types is not None:
+            results = [t for t in results if t.trap_type in trap_types]
 
         if not include_controls:
             excluded_types = {"benign_control", "overly_cautious", "benign_code_control"}

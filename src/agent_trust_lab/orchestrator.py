@@ -1065,6 +1065,7 @@ class Orchestrator:
         trap_ids: Optional[List[str]] = None,
         category: Optional[str] = None,
         difficulty: Optional[str] = None,
+        trap_types: Optional[List[str]] = None,
         mutate: bool = False,
         mutation_seed: Optional[int] = None,
         limit: Optional[int] = None,
@@ -1078,6 +1079,7 @@ class Orchestrator:
             trap_ids=trap_ids,
             category=category,
             difficulty=difficulty,
+            trap_types=trap_types,
             include_controls=True,
         )
 

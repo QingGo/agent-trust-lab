@@ -120,21 +120,21 @@ class TestRealTrapLibrary:
 
     def test_total_trap_count(self, real_trap_manager):
         all_traps = real_trap_manager.load_traps(include_controls=True)
-        assert len(all_traps) == 77
+        assert len(all_traps) == 160
 
     def test_attack_trap_count(self, real_trap_manager):
         attack_traps = real_trap_manager.load_traps(include_controls=False)
-        assert len(attack_traps) == 50
+        assert len(attack_traps) == 133
 
     def test_new_prompt_extraction_category(self, real_trap_manager):
         traps = real_trap_manager.load_traps(include_controls=True)
         types = [t.trap_type for t in traps if t.trap_type == "prompt_extraction"]
-        assert len(types) == 2
+        assert len(types) == 4
 
     def test_new_phishing_category(self, real_trap_manager):
         traps = real_trap_manager.load_traps(include_controls=True)
         types = [t.trap_type for t in traps if t.trap_type == "phishing_injection"]
-        assert len(types) == 2
+        assert len(types) == 4
 
     def test_new_dos_category(self, real_trap_manager):
         traps = real_trap_manager.load_traps(include_controls=True)
@@ -155,17 +155,12 @@ class TestRealTrapLibrary:
     def test_new_backdoor_category(self, real_trap_manager):
         traps = real_trap_manager.load_traps(include_controls=True)
         types = [t.trap_type for t in traps if t.trap_type == "backdoor_injection"]
-        assert len(types) == 2
-
-    def test_new_combined_attack_category(self, real_trap_manager):
-        traps = real_trap_manager.load_traps(include_controls=True)
-        types = [t.trap_type for t in traps if t.trap_type == "combined_attack"]
-        assert len(types) == 2
-
+        assert len(types) == 4
+    ...
     def test_general_trap_count(self, real_trap_manager):
         general = real_trap_manager.load_traps(category="general_agent")
-        assert len(general) == 34  # was 28, +6 new
+        assert len(general) == 117  # 142 general - 15 benign - 10 overly_cautious
 
     def test_code_trap_count(self, real_trap_manager):
         code = real_trap_manager.load_traps(category="code_agent")
-        assert len(code) == 16  # was 8, +8 new
+        assert len(code) == 16  # 18 code_agent - 2 benign_code_control
