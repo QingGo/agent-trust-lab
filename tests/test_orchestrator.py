@@ -57,6 +57,7 @@ def config(trap_data_dir):
         trap_library_path=trap_data_dir,
         sandbox="docker",
         agent_type="",
+        strict_mode=False,
     )
 
 
@@ -65,7 +66,31 @@ class TestOrchestrator:
     def _stub_hallukg(self):
         """Force hallukg engines to use stub fallback during tests."""
         with patch("agent_trust_lab.llm.get_api_key", return_value=None):
-            yield
+            orig_extractor_init = None
+            orig_classifier_init = None
+            try:
+                from agent_trust_lab.hallukg.classifier import GSARClassifier
+                from agent_trust_lab.hallukg.extractor import TripleExtractor
+
+                orig_extractor_init = TripleExtractor.__init__
+                orig_classifier_init = GSARClassifier.__init__
+
+                def _extractor_init(self, *args, **kwargs):
+                    kwargs["strict_mode"] = False
+                    orig_extractor_init(self, *args, **kwargs)
+
+                def _classifier_init(self, *args, **kwargs):
+                    kwargs["strict_mode"] = False
+                    orig_classifier_init(self, *args, **kwargs)
+
+                TripleExtractor.__init__ = _extractor_init
+                GSARClassifier.__init__ = _classifier_init
+                yield
+            finally:
+                if orig_extractor_init is not None:
+                    TripleExtractor.__init__ = orig_extractor_init
+                if orig_classifier_init is not None:
+                    GSARClassifier.__init__ = orig_classifier_init
 
     def test_resolve_harness_docker(self, config):
         orch = Orchestrator(config)

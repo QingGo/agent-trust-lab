@@ -61,6 +61,8 @@ def compute_cache_key(
     strict_mode: bool = False,
     skip_hallukg: bool = False,
     runs_count: int = 1,
+    gsar_vote_enabled: bool = True,
+    gsar_vote_models: Optional[List[str]] = None,
 ) -> str:
     """Compute a deterministic cache key from evaluation parameters.
 
@@ -78,6 +80,7 @@ def compute_cache_key(
 
     code_fp = _get_code_fingerprint()
 
+    vote_models = sorted(gsar_vote_models) if gsar_vote_models else []
     components = [
         trap_id,
         model,
@@ -91,6 +94,8 @@ def compute_cache_key(
         json.dumps(skip_types),
         "1" if strict_mode else "0",
         "1" if skip_hallukg else "0",
+        "1" if gsar_vote_enabled else "0",
+        json.dumps(vote_models),
         tools_serialized,
         code_fp,
         str(runs_count),

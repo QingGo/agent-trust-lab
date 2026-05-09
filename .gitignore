@@ -31,3 +31,5 @@ compare_results/
 results.md
 *.log
 compare_thinking.yaml
+calibration_candidates.json
+annotations.json

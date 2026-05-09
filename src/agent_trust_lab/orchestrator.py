@@ -636,6 +636,8 @@ class Orchestrator:
             strict_mode=cfg.strict_mode,
             skip_hallukg=cfg.skip_hallukg,
             runs_count=runs_count,
+            gsar_vote_enabled=cfg.gsar_vote_enabled,
+            gsar_vote_models=cfg.gsar_vote_models,
         )
         if not cache_is_fresh(key, cfg.cache_ttl_days, cfg.cache_dir):
             return None
@@ -669,6 +671,8 @@ class Orchestrator:
             strict_mode=cfg.strict_mode,
             skip_hallukg=cfg.skip_hallukg,
             runs_count=runs_count,
+            gsar_vote_enabled=cfg.gsar_vote_enabled,
+            gsar_vote_models=cfg.gsar_vote_models,
         )
         try:
             cache_put(key, result.to_dict(), cfg.cache_dir)
@@ -744,16 +748,16 @@ class Orchestrator:
 
         hallucination_steps = classifier.classify(trajectory.steps, all_triples)
 
-        if self.config.model_list:
+        if self.config.gsar_vote_enabled and self.config.gsar_vote_models:
             try:
                 multi_model_steps = classifier.classify_multi_model(
-                    trajectory.steps, all_triples, self.config.model_list
+                    trajectory.steps, all_triples, self.config.gsar_vote_models
                 )
                 if multi_model_steps:
                     hallucination_steps = multi_model_steps
             except Exception as e:
                 logger.warning(
-                    "Multi-model classification failed, using single-model result: %s", e
+                    "Multi-model GSAR voting failed, using single-model result: %s", e
                 )
 
         for step in hallucination_steps:

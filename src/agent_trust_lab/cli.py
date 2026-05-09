@@ -439,11 +439,27 @@ def run(
         help="Trap injection template: system_note, colleague, documentation, "
         "hidden_in_context, code_comment",
     ),
+    gsar_vote: bool = typer.Option(
+        True, "--gsar-vote/--no-gsar-vote", help="Enable multi-model GSAR voting"
+    ),
+    gsar_vote_models: Optional[str] = typer.Option(
+        "deepseek-v4-flash,deepseek-v4-pro",
+        "--gsar-vote-models",
+        help="Comma-separated list of models for GSAR voting",
+    ),
+    no_strict: bool = typer.Option(
+        False, "--no-strict", help="Disable strict mode (allow stub fallback for judges)"
+    ),
 ):
     """Run general agent evaluation against traps."""
     from agent_trust_lab.log import cli_verbosity_to_level, setup_logging
 
     setup_logging(level=cli_verbosity_to_level(verbose), log_file=log_file)
+
+    vote_models = (
+        [m.strip() for m in gsar_vote_models.split(",") if m.strip()]
+        if gsar_vote_models else []
+    )
 
     config_params = _load_config_file(config_file) if config_file else {}
     config_params.update({
@@ -464,6 +480,9 @@ def run(
         "grounded_threshold": grounded_threshold,
         "nli_neutral_weight": nli_weight,
         "injection_template": injection_template,
+        "gsar_vote_enabled": gsar_vote,
+        "gsar_vote_models": vote_models,
+        "strict_mode": not no_strict,
     })
     orchestrator, results = _run_evaluation(
         config_params=config_params,
@@ -536,11 +555,27 @@ def run_code(
     config_file: Optional[str] = typer.Option(
         None, "--config-file", help="YAML/JSON config file (CLI flags override file values)"
     ),
+    gsar_vote: bool = typer.Option(
+        True, "--gsar-vote/--no-gsar-vote", help="Enable multi-model GSAR voting"
+    ),
+    gsar_vote_models: Optional[str] = typer.Option(
+        "deepseek-v4-flash,deepseek-v4-pro",
+        "--gsar-vote-models",
+        help="Comma-separated list of models for GSAR voting",
+    ),
+    no_strict: bool = typer.Option(
+        False, "--no-strict", help="Disable strict mode (allow stub fallback for judges)"
+    ),
 ):
     """Run code agent evaluation against traps."""
     from agent_trust_lab.log import cli_verbosity_to_level, setup_logging
 
     setup_logging(level=cli_verbosity_to_level(verbose), log_file=log_file)
+
+    vote_models = (
+        [m.strip() for m in gsar_vote_models.split(",") if m.strip()]
+        if gsar_vote_models else []
+    )
 
     config_params = _load_config_file(config_file) if config_file else {}
     config_params.update({
@@ -559,6 +594,9 @@ def run_code(
         "output_dir": output_dir,
         "grounded_threshold": grounded_threshold,
         "nli_neutral_weight": nli_weight,
+        "gsar_vote_enabled": gsar_vote,
+        "gsar_vote_models": vote_models,
+        "strict_mode": not no_strict,
     })
     orchestrator, results = _run_evaluation(
         config_params=config_params,
@@ -1008,6 +1046,17 @@ def replay(
     config_file: Optional[str] = typer.Option(
         None, "--config-file", help="YAML/JSON config file (CLI flags override file values)"
     ),
+    gsar_vote: bool = typer.Option(
+        True, "--gsar-vote/--no-gsar-vote", help="Enable multi-model GSAR voting"
+    ),
+    gsar_vote_models: Optional[str] = typer.Option(
+        "deepseek-v4-flash,deepseek-v4-pro",
+        "--gsar-vote-models",
+        help="Comma-separated list of models for GSAR voting",
+    ),
+    no_strict: bool = typer.Option(
+        False, "--no-strict", help="Disable strict mode (allow stub fallback for judges)"
+    ),
 ):
     """Replay a captured trajectory through audit and hallucination detection.
 
@@ -1047,6 +1096,11 @@ def replay(
     resolved_trap_type = trap_type or metadata.get("trap_type", "unknown")
     resolved_category = category or metadata.get("category", "general_agent")
 
+    vote_models = (
+        [m.strip() for m in gsar_vote_models.split(",") if m.strip()]
+        if gsar_vote_models else []
+    )
+
     config_kwargs = _load_config_file(config_file) if config_file else {}
     config_kwargs.update({
         "model": model,
@@ -1062,6 +1116,9 @@ def replay(
         "output_dir": output_dir,
         "grounded_threshold": grounded_threshold,
         "nli_neutral_weight": nli_weight,
+        "gsar_vote_enabled": gsar_vote,
+        "gsar_vote_models": vote_models,
+        "strict_mode": not no_strict,
     })
     config = EvaluationConfig(**config_kwargs)
 
@@ -2396,3 +2453,169 @@ def _run_perturbation_from_result(
         })
 
     return pert_results
+
+
+@app.command()
+def extract_calibration_data(
+    result_json: List[str] = typer.Argument(
+        ..., help="Path(s) to result JSON file(s) (from --report export). Can specify multiple."
+    ),
+    output: str = typer.Option(
+        "calibration_candidates.json",
+        "--output", "-o",
+        help="Output JSON path for calibration candidates",
+    ),
+    target: int = typer.Option(
+        200, "--target", "-n", help="Target number of candidates to extract (default: 200)"
+    ),
+    csv_output: Optional[str] = typer.Option(
+        None, "--csv", help="Also export as CSV (for Label Studio)"
+    ),
+    seed: int = typer.Option(42, "--seed", help="Random seed for reproducible sampling"),
+    verbose: int = typer.Option(
+        0, "--verbose", "-v", count=True, help="Increase verbosity"
+    ),
+):
+    """Extract calibration annotation candidates from evaluation result JSONs.
+
+    Reads one or more result JSON files (from --report export after run),
+    performs stratified sampling to ensure balanced GSAR label coverage,
+    and outputs a JSON file that can be loaded by an annotation tool.
+
+    The output JSON contains step_content, evidence, trap_type, and the
+    LLM's original classification for each candidate — everything an
+    annotator needs to assign ground-truth GSAR labels.
+
+    Examples:
+        agent-trust-lab extract-calibration-data results/cmp_3models/flash.json
+        agent-trust-lab extract-calibration-data \\
+            results/cmp_3models/flash.json results/cmp_3models/pro.json -o my.json
+        agent-trust-lab extract-calibration-data results/cmp_3models/flash.json \\
+            --csv annotations.csv
+    """
+    from agent_trust_lab.calibration.extract import (
+        build_calibration_candidates_json,
+        candidates_to_csv,
+    )
+    from agent_trust_lab.log import cli_verbosity_to_level, setup_logging
+
+    setup_logging(level=cli_verbosity_to_level(verbose))
+
+    if not result_json:
+        console.print("[red]Specify at least one result JSON file.[/red]")
+        raise typer.Exit(code=1)
+
+    missing = [p for p in result_json if not Path(p).is_file()]
+    if missing:
+        console.print(f"[red]Files not found: {', '.join(missing)}[/red]")
+        raise typer.Exit(code=1)
+
+    console.print(
+        f"[bold]Extracting calibration candidates[/bold] from {len(result_json)} file(s)"
+    )
+    console.print(f"  Target: {target} candidates")
+    console.print(f"  Seed: {seed}")
+
+    output_path = build_calibration_candidates_json(
+        result_paths=result_json,
+        output_path=output,
+        target_count=target,
+        seed=seed,
+    )
+
+    with open(output_path, "r", encoding="utf-8") as f:
+        data = json.load(f)
+
+    meta = data.get("metadata", {})
+    dist = meta.get("label_distribution", {})
+    total = meta.get("total_candidates", 0)
+
+    console.print(f"\n[green]{total} candidates extracted to {output_path}[/green]")
+    console.print("  Label distribution:")
+    for label in ["Grounded", "Ungrounded", "Contradicted", "Complementary"]:
+        count = dist.get(label, 0)
+        color = (
+            "green" if label == "Grounded"
+            else "red" if label in ("Ungrounded", "Contradicted")
+            else "yellow"
+        )
+        console.print(f"    [{color}]{label}[/{color}]: {count}")
+
+    unique_traps = len(set(c.get("trap_id") for c in data.get("candidates", [])))
+    unique_types = len(set(c.get("trap_type") for c in data.get("candidates", [])))
+    console.print(f"  Unique traps: {unique_traps}")
+    console.print(f"  Unique trap types: {unique_types}")
+
+    if csv_output:
+        csv_path = candidates_to_csv(output_path, csv_output)
+        console.print(f"\n[green]CSV export: {csv_path}[/green]")
+
+
+@app.command()
+def annotate(
+    candidates_json: str = typer.Argument(
+        ..., help="Path to calibration candidates JSON (from extract-calibration-data)"
+    ),
+    output: str = typer.Option(
+        "annotations.json",
+        "--output", "-o",
+        help="Output path for annotations JSON",
+    ),
+    auto_save: bool = typer.Option(
+        True, "--auto-save/--no-auto-save", help="Auto-save progress after each annotation"
+    ),
+    verbose: int = typer.Option(
+        0, "--verbose", "-v", count=True, help="Increase verbosity"
+    ),
+):
+    """Interactively annotate calibration candidates for GSAR labels.
+
+    Walks through each candidate step-by-step in the terminal, showing the
+    agent's step content, available evidence, and anchor context. The user
+    assigns a GSAR label (Grounded/Ungrounded/Contradicted/Complementary)
+    with optional confidence scores.
+
+    Annotations are saved incrementally with --auto-save (default on).
+    You can interrupt at any time with Ctrl+C and resume later — progress
+    is tracked in the output file.
+
+    Controls:
+      1/G = Grounded      2/U = Ungrounded
+      3/C = Contradicted  4/P = Complementary
+      s = Skip this item   q = Quit and save
+
+    Examples:
+        agent-trust-lab annotate calibration_candidates.json
+        agent-trust-lab annotate calibration_candidates.json -o my_annotations.json
+    """
+    if not Path(candidates_json).is_file():
+        console.print(f"[red]Candidates file not found: {candidates_json}[/red]")
+        raise typer.Exit(code=1)
+
+    from agent_trust_lab.calibration.annotator import run_interactive_annotation
+
+    console.print("[bold]GSAR Calibration Annotation Tool[/bold]")
+    console.print(f"  Source: {candidates_json}")
+    console.print(f"  Output: {output}")
+    console.print(f"  Auto-save: {'on' if auto_save else 'off'}")
+    console.print()
+    console.print("[dim]Controls: 1=Grounded 2=Ungrounded 3=Contradicted 4=Complementary[/dim]")
+    console.print("[dim]          s=Skip  q=Quit and save[/dim]")
+    console.print()
+
+    try:
+        result = run_interactive_annotation(
+            candidates_path=candidates_json,
+            output_path=output,
+            auto_save=auto_save,
+        )
+    except (SystemExit, KeyboardInterrupt):
+        console.print("\n[yellow]Annotation interrupted. Progress saved.[/yellow]")
+        return
+
+    total = result.get("total", 0)
+    annotated_count = result.get("annotated", 0)
+    console.print(
+        f"\n[green]Done: {annotated_count}/{total} candidates annotated.[/green]"
+    )
+    console.print(f"  Saved to: {output}")

@@ -8,3 +8,5 @@
 !results/
 !compare_results/
 !compare_thinking.yaml
+!calibration_candidates.json
+!annotations.json

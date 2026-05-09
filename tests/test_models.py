@@ -443,3 +443,35 @@ class TestEvaluationConfig:
             judge_model="gpt-4o",
         )
         assert config.judge_model == "gpt-4o"
+
+    def test_gsar_vote_enabled_default(self):
+        config = EvaluationConfig()
+        assert config.gsar_vote_enabled is True
+
+    def test_gsar_vote_enabled_custom(self):
+        config = EvaluationConfig(gsar_vote_enabled=False)
+        assert config.gsar_vote_enabled is False
+
+    def test_gsar_vote_models_default(self):
+        config = EvaluationConfig()
+        assert config.gsar_vote_models == ["deepseek-v4-flash", "deepseek-v4-pro"]
+
+    def test_gsar_vote_models_custom(self):
+        config = EvaluationConfig(gsar_vote_models=["model-a", "model-b", "model-c"])
+        assert config.gsar_vote_models == ["model-a", "model-b", "model-c"]
+
+    def test_gsar_vote_models_single_raises(self):
+        with pytest.raises(ValueError, match="at least 2"):
+            EvaluationConfig(gsar_vote_models=["only-one"])
+
+    def test_gsar_vote_models_empty_no_raise(self):
+        config = EvaluationConfig(gsar_vote_models=[])
+        assert config.gsar_vote_models == []
+
+    def test_strict_mode_default(self):
+        config = EvaluationConfig()
+        assert config.strict_mode is True
+
+    def test_strict_mode_custom(self):
+        config = EvaluationConfig(strict_mode=False)
+        assert config.strict_mode is False

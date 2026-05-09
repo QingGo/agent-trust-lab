@@ -39,13 +39,17 @@ class EvaluationConfig:
             "hard": 1.0,
         }
     )
+    gsar_vote_enabled: bool = True
+    gsar_vote_models: List[str] = field(
+        default_factory=lambda: ["deepseek-v4-flash", "deepseek-v4-pro"]
+    )
     model_list: List[str] = field(default_factory=list)
     policy_rules: Optional[List[str]] = None
     codebase_path: Optional[str] = None
     test_suite_path: Optional[str] = None
     dry_run: bool = False
     skip_hallukg: bool = False
-    strict_mode: bool = False
+    strict_mode: bool = True
     timeout: int = 120
     skip_extract_types: List[str] = field(default_factory=lambda: ["action", "error"])
     grounded_threshold: float = 0.3
@@ -115,3 +119,7 @@ class EvaluationConfig:
             )
         if self.runs < 1:
             raise ValueError(f"runs must be >= 1, got {self.runs}")
+        if self.gsar_vote_models and len(self.gsar_vote_models) < 2:
+            raise ValueError(
+                f"gsar_vote_models must have at least 2 models, got {self.gsar_vote_models}"
+            )
