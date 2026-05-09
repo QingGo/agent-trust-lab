@@ -34,9 +34,10 @@ class GSARClassifier:
     Session 9: Added classify_multi_model() for multi-model voting.
     """
 
-    def __init__(self, model: str = "", strict_mode: bool = False):
+    def __init__(self, model: str = "", strict_mode: bool = False, temperature: float = 0.0):
         self.model = model or DEFAULT_MODEL
         self.strict_mode = strict_mode
+        self.temperature = temperature
 
     def classify(
         self,
@@ -99,7 +100,9 @@ class GSARClassifier:
         with ThreadPoolExecutor(max_workers=len(model_list)) as executor:
             futures: dict = {}
             for model in model_list:
-                classifier_for_model = GSARClassifier(model=model)
+                classifier_for_model = GSARClassifier(
+                    model=model, temperature=self.temperature
+                )
 
                 def _run_classify(
                     clf=classifier_for_model,
@@ -243,6 +246,7 @@ class GSARClassifier:
                 },
             ],
             extra_body={"thinking": {"type": "disabled"}},
+            temperature=self.temperature,
         )
 
         from agent_trust_lab.llm import capture_usage

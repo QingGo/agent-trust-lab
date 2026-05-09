@@ -37,6 +37,7 @@ class HalluStepReport:
     u_score: float = 0.0
     c_score: float = 0.0
     faithfulness_score: float = 1.0
+    raw_gsar_faithfulness: float = 0.0
     evidence: List[str] = field(default_factory=list)
     explanation: str = ""
     anchor_type: str = "none"  # semantic/token_overlap/multi_hop/none

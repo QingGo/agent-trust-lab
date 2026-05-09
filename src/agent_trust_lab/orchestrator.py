@@ -39,6 +39,7 @@ class EvaluationResult:
     error: Optional[str] = None
     runs_count: int = 1
     run_details: List[Dict[str, Any]] = field(default_factory=list)
+    checkpoint: Dict[str, Any] = field(default_factory=dict)
 
     def summary(self) -> Dict[str, Any]:
         result = {
@@ -81,6 +82,22 @@ class EvaluationResult:
                     self._hallu_step_dict(h, self.trajectory) for h in self.hallucination_steps
                 ],
             }
+        if self.checkpoint:
+            result["checkpoint"] = self.checkpoint
+        if self.trajectory.steps:
+            result["trajectory_steps"] = [
+                {"type": s.type, "content": s.content}
+                for s in self.trajectory.steps
+            ]
+        if self.trajectory.security_events:
+            result["security_event_log"] = [
+                {
+                    "event_type": e.event_type,
+                    "description": e.description,
+                    "step_index": e.step_index,
+                }
+                for e in self.trajectory.security_events
+            ]
         if self.code_agent_checks:
             result["code_hallu"] = {
                 "count": len(self.code_agent_checks),
@@ -96,6 +113,7 @@ class EvaluationResult:
             "u_score": h.u_score,
             "c_score": h.c_score,
             "faithfulness_score": h.faithfulness_score,
+            "raw_gsar_faithfulness": h.raw_gsar_faithfulness,
             "anchor_type": h.anchor_type,
             "nli_score": h.nli_score,
             "gsar_nli_disagreement": h.gsar_nli_disagreement,
@@ -419,12 +437,16 @@ class Orchestrator:
 
         hallu_steps: List[HalluStepReport] = []
         code_hallus: List[CodeHalluReport] = []
+        checkpoint_data: Dict[str, Any] = {}
         if not self.config.skip_hallukg:
-            hallu_steps, code_hallus = self._run_hallukg(
+            hallu_steps, code_hallus, checkpoint_data = self._run_hallukg(
                 trajectory=trajectory,
                 is_code_agent=trap.category == "code_agent",
                 knowledge_source=trap.knowledge_source or "",
             )
+
+        if self.config.calibration_profile and hallu_steps:
+            self._apply_calibration(hallu_steps)
 
         logger.debug(
             "run_single done: trap=%s compliance=%s crit=%d violations=%s",
@@ -460,6 +482,7 @@ class Orchestrator:
             compliance=compliance,
             hallucination_steps=hallu_steps,
             code_agent_checks=code_hallus,
+            checkpoint=checkpoint_data,
         )
 
         if self.config.cache_enabled and not mutate and not skip_cache:
@@ -577,6 +600,7 @@ class Orchestrator:
             compliance=base.compliance,
             hallucination_steps=merged_hallu,
             code_agent_checks=base.code_agent_checks,
+            checkpoint=base.checkpoint,
             error=None,
             runs_count=runs,
             run_details=run_details,
@@ -667,7 +691,7 @@ class Orchestrator:
         trajectory: SecureTrajectory,
         is_code_agent: bool = False,
         knowledge_source: str = "",
-    ) -> tuple[List[HalluStepReport], List[CodeHalluReport]]:
+    ) -> tuple[List[HalluStepReport], List[CodeHalluReport], Dict[str, Any]]:
         from agent_trust_lab.hallukg.anchoring import AnchoringReasoner
         from agent_trust_lab.hallukg.classifier import GSARClassifier
         from agent_trust_lab.hallukg.extractor import TripleExtractor
@@ -679,15 +703,24 @@ class Orchestrator:
             knowledge_base_path=self.config.anchor_kb,
             grounded_threshold=self.config.grounded_threshold,
         )
-        classifier = GSARClassifier(model=judge_model, strict_mode=self.config.strict_mode)
+        classifier = GSARClassifier(
+            model=judge_model,
+            strict_mode=self.config.strict_mode,
+            temperature=self.config.temperature,
+        )
 
         skip_types = set(self.config.skip_extract_types)
         all_triples = []
         step_anchor_types: dict[int, str] = {}
+        raw_triples_by_step: dict[int, list] = {}
         for i, step in enumerate(trajectory.steps):
             if step.type == "trap_injection" or step.type in skip_types:
                 continue
             triples = extractor.extract(step.content)
+            raw_triples_by_step[i] = [
+                dict(t) if isinstance(t, dict) else {"data": str(t)}
+                for t in triples
+            ]
             anchored = reasoner.batch_anchor(triples, knowledge_text=knowledge_source)
             all_triples.extend(anchored)
             step_anchor_types[i] = self._step_anchor_type(anchored)
@@ -749,7 +782,13 @@ class Orchestrator:
             )
             code_hallus = code_checker.batch_check(trajectory)
 
-        return hallucination_steps, code_hallus
+        checkpoint: Dict[str, Any] = {
+            "anchored_triples": all_triples,
+            "raw_triples_by_step": {str(k): v for k, v in raw_triples_by_step.items()},
+            "step_anchor_types": step_anchor_types,
+            "knowledge_source": knowledge_source,
+        }
+        return hallucination_steps, code_hallus, checkpoint
 
     @staticmethod
     def _determine_anchor_type(triple: dict) -> str:
@@ -801,6 +840,31 @@ class Orchestrator:
                 merged.append(s)
         return merged
 
+    def _apply_calibration(self, hallucination_steps: List[HalluStepReport]) -> None:
+        from agent_trust_lab.calibration.profile import load_profile
+
+        profile_id = self.config.calibration_profile or ""
+        profile = load_profile(profile_id)
+        if profile is None:
+            logger.warning(
+                "Calibration profile '%s' not found, skipping calibration",
+                self.config.calibration_profile,
+            )
+            return
+
+        for step in hallucination_steps:
+            for score_name in ("g_score", "u_score", "c_score", "faithfulness_score"):
+                raw = getattr(step, score_name, 0.0)
+                calibrated = profile.get_calibrated_score(score_name, raw)
+                if calibrated is not None:
+                    setattr(step, score_name, calibrated)
+        logger.debug(
+            "Applied calibration profile '%s' (kappa=%.3f) to %d steps",
+            self.config.calibration_profile,
+            profile.kappa_gsar,
+            len(hallucination_steps),
+        )
+
     def _apply_faithfulness_check(
         self,
         hallucination_steps: List[HalluStepReport],
@@ -819,6 +883,7 @@ class Orchestrator:
                 continue
             evidence = step.evidence if step.evidence else ["no evidence"]
             gsar_score = step.faithfulness_score
+            step.raw_gsar_faithfulness = gsar_score
             nli_score = checker.check([traj_step.content], evidence)
             alpha = weights.get(step.anchor_type, 0.5)
             blended = round(alpha * gsar_score + (1.0 - alpha) * nli_score, 4)
@@ -1253,8 +1318,9 @@ class Orchestrator:
 
         hallu_steps: List[HalluStepReport] = []
         code_hallus: List[CodeHalluReport] = []
+        checkpoint_data: Dict[str, Any] = {}
         if not self.config.skip_hallukg:
-            hallu_steps, code_hallus = self._run_hallukg(
+            hallu_steps, code_hallus, checkpoint_data = self._run_hallukg(
                 trajectory, is_code_agent=is_code_agent, knowledge_source=knowledge_source
             )
 
@@ -1277,6 +1343,7 @@ class Orchestrator:
             compliance=compliance,
             hallucination_steps=hallu_steps,
             code_agent_checks=code_hallus,
+            checkpoint=checkpoint_data,
         )
 
     def run_perturbation_robustness(

@@ -239,3 +239,323 @@ class TestRedTeamCLI:
             )
         assert result.exit_code == 0
         assert "Red Team Trap Generator" in result.stdout
+
+
+class TestHardenTrapsCLI:
+    def test_harden_traps_help(self):
+        from typer.testing import CliRunner
+
+        from agent_trust_lab.cli import app
+
+        runner = CliRunner()
+        result = runner.invoke(app, ["harden-traps", "--help"])
+        assert result.exit_code == 0
+        assert "Harden low-discrimination traps" in result.stdout
+
+    def test_harden_traps_missing_file(self):
+        from typer.testing import CliRunner
+
+        from agent_trust_lab.cli import app
+
+        runner = CliRunner()
+        result = runner.invoke(app, ["harden-traps", "/nonexistent/comparison.json"])
+        assert result.exit_code == 1
+        assert "not found" in result.stdout
+
+    def test_harden_traps_invalid_intensity(self):
+        import json
+        import tempfile
+        from unittest.mock import patch
+
+        from typer.testing import CliRunner
+
+        from agent_trust_lab.cli import app
+
+        comparison_data = {"results": []}
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+            json.dump(comparison_data, f)
+            comp_path = f.name
+
+        try:
+            with patch("agent_trust_lab.llm.get_api_key", return_value=None):
+                runner = CliRunner()
+                result = runner.invoke(
+                    app,
+                    [
+                        "harden-traps",
+                        comp_path,
+                        "--intensity",
+                        "extreme",
+                    ],
+                )
+            assert result.exit_code == 1
+            assert "Invalid intensity" in result.stdout
+        finally:
+            import os as _os
+
+            _os.unlink(comp_path)
+
+    def test_harden_traps_dry_run(self):
+        import json
+        import tempfile
+        from unittest.mock import patch
+
+        from typer.testing import CliRunner
+
+        from agent_trust_lab.cli import app
+
+        comparison_data = {
+            "results": [
+                {
+                    "trap_id": "trap_easy",
+                    "scores": {
+                        "model_a": {
+                            "hallucination": {
+                                "avg_g_score": 0.9,
+                                "avg_u_score": 0.02,
+                                "avg_c_score": 0.01,
+                                "avg_faithfulness": 0.95,
+                            }
+                        },
+                        "model_b": {
+                            "hallucination": {
+                                "avg_g_score": 0.88,
+                                "avg_u_score": 0.03,
+                                "avg_c_score": 0.02,
+                                "avg_faithfulness": 0.94,
+                            }
+                        },
+                    },
+                },
+            ]
+        }
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+            json.dump(comparison_data, f)
+            comp_path = f.name
+
+        try:
+            with patch("agent_trust_lab.llm.get_api_key", return_value=None):
+                runner = CliRunner()
+                result = runner.invoke(
+                    app,
+                    [
+                        "harden-traps",
+                        comp_path,
+                        "--dry-run",
+                        "--model",
+                        "deepseek-v4-flash",
+                    ],
+                )
+            assert result.exit_code == 0
+            assert "Hardening traps from:" in result.stdout
+            assert "DRY RUN" in result.stdout
+        finally:
+            import os as _os
+
+            _os.unlink(comp_path)
+
+
+class TestGenerateNovelCLI:
+    def test_generate_novel_help(self):
+        from typer.testing import CliRunner
+
+        from agent_trust_lab.cli import app
+
+        runner = CliRunner()
+        result = runner.invoke(app, ["generate-novel", "--help"])
+        assert result.exit_code == 0
+        assert "Generate de novo traps" in result.stdout
+
+    def test_generate_novel_no_args(self):
+        from typer.testing import CliRunner
+
+        from agent_trust_lab.cli import app
+
+        runner = CliRunner()
+        result = runner.invoke(app, ["generate-novel"])
+        assert result.exit_code == 1
+        assert "Specify --all or --types" in result.stdout
+
+    def test_generate_novel_dry_run_with_types(self):
+        from unittest.mock import patch
+
+        from typer.testing import CliRunner
+
+        from agent_trust_lab.cli import app
+
+        with patch("agent_trust_lab.llm.get_api_key", return_value=None):
+            with patch(
+                "agent_trust_lab.cli._get_traps_data_dir",
+                return_value=__import__("pathlib").Path(
+                    __import__("agent_trust_lab.traps").__file__
+                ).parent
+                / "data",
+            ):
+                runner = CliRunner()
+                result = runner.invoke(
+                    app,
+                    [
+                        "generate-novel",
+                        "--dry-run",
+                        "--types",
+                        "parameter_hallucination",
+                        "--no-variants",
+                        "--novel-count",
+                        "1",
+                    ],
+                )
+            assert result.exit_code == 0
+            assert "Generating novel traps" in result.stdout
+            assert "DRY RUN" in result.stdout
+
+
+class TestRejudgeCLI:
+    def test_rejudge_help(self):
+        from typer.testing import CliRunner
+
+        from agent_trust_lab.cli import app
+
+        runner = CliRunner()
+        result = runner.invoke(app, ["rejudge", "--help"])
+        assert result.exit_code == 0
+        assert "Re-evaluate hallucination scores" in result.stdout
+
+    def test_rejudge_missing_judge(self):
+        from typer.testing import CliRunner
+
+        from agent_trust_lab.cli import app
+
+        runner = CliRunner()
+        result = runner.invoke(app, ["rejudge", "/nonexistent/results.json"])
+        assert result.exit_code != 0
+
+    def test_rejudge_missing_file(self):
+        from typer.testing import CliRunner
+
+        from agent_trust_lab.cli import app
+
+        runner = CliRunner()
+        result = runner.invoke(
+            app,
+            ["rejudge", "/nonexistent/results.json", "--judge", "test-model"],
+        )
+        assert result.exit_code == 1
+        assert "not found" in result.stdout
+
+    def test_rejudge_no_results(self):
+        import json
+        import tempfile
+        from unittest.mock import patch
+
+        from typer.testing import CliRunner
+
+        from agent_trust_lab.cli import app
+
+        data = {"config": {}, "results": []}
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".json", delete=False
+        ) as f:
+            json.dump(data, f)
+            results_path = f.name
+
+        try:
+            with patch("agent_trust_lab.llm.get_api_key", return_value=None):
+                runner = CliRunner()
+                result = runner.invoke(
+                    app,
+                    ["rejudge", results_path, "--judge", "test-model"],
+                )
+            assert result.exit_code == 0
+            assert "No results found" in result.stdout
+        finally:
+            import os as _os
+
+            _os.unlink(results_path)
+
+    def test_rejudge_skips_no_checkpoint(self):
+        import json
+        import tempfile
+        from unittest.mock import patch
+
+        from typer.testing import CliRunner
+
+        from agent_trust_lab.cli import app
+
+        data = {
+            "config": {"judge_model": "deepseek-v4-flash"},
+            "results": [
+                {
+                    "trap_id": "test_01",
+                    "trap_type": "tool_bypass",
+                    "category": "general_agent",
+                    "hallucination": {"steps": [], "avg_g_score": 0.0},
+                }
+            ],
+        }
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".json", delete=False
+        ) as f:
+            json.dump(data, f)
+            results_path = f.name
+
+        try:
+            with patch("agent_trust_lab.llm.get_api_key", return_value=None):
+                runner = CliRunner()
+                result = runner.invoke(
+                    app,
+                    ["rejudge", results_path, "--judge", "mimo-v2.5-pro"],
+                )
+            assert result.exit_code == 1
+            assert "No API key" in result.stdout
+        finally:
+            import os as _os
+
+            _os.unlink(results_path)
+
+
+class TestPerturbCLI:
+    def test_perturb_help(self):
+        from typer.testing import CliRunner
+
+        from agent_trust_lab.cli import app
+
+        runner = CliRunner()
+        result = runner.invoke(app, ["perturb", "--help"])
+        assert result.exit_code == 0
+        assert "Test score stability" in result.stdout
+
+    def test_perturb_missing_file(self):
+        from typer.testing import CliRunner
+
+        from agent_trust_lab.cli import app
+
+        runner = CliRunner()
+        result = runner.invoke(app, ["perturb", "/nonexistent/results.json"])
+        assert result.exit_code == 1
+        assert "not found" in result.stdout
+
+    def test_perturb_no_results(self):
+        import json
+        import tempfile
+
+        from typer.testing import CliRunner
+
+        from agent_trust_lab.cli import app
+
+        data = {"config": {}, "results": []}
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".json", delete=False
+        ) as f:
+            json.dump(data, f)
+            results_path = f.name
+
+        try:
+            runner = CliRunner()
+            result = runner.invoke(app, ["perturb", results_path])
+            assert result.exit_code == 0
+            assert "No results found" in result.stdout
+        finally:
+            import os as _os
+
+            _os.unlink(results_path)

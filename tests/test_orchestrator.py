@@ -1102,6 +1102,176 @@ class TestEvaluationResultSerialization:
         assert result.hallucination_steps == []
 
 
+class TestCheckpointSerialization:
+    def test_summary_includes_checkpoint_when_present(self, config):
+        from agent_trust_lab.models.report import HalluStepReport
+        from agent_trust_lab.models.trajectory import SecureTrajectory, TrajectoryStep
+
+        traj = SecureTrajectory(
+            steps=[TrajectoryStep(type="thought", content="test")],
+            security_events=[],
+        )
+        result = EvaluationResult(
+            trap_id="test_cp",
+            trap_type="tool_bypass",
+            category="general_agent",
+            trajectory=traj,
+            hallucination_steps=[
+                HalluStepReport(step_index=0, gsar_label="Grounded", g_score=0.9)
+            ],
+            checkpoint={
+                "anchored_triples": [
+                    {"subject": "x", "predicate": "y", "object": "z", "anchor_score": 0.95}
+                ],
+                "knowledge_source": "test knowledge",
+            },
+        )
+        s = result.summary()
+        assert "checkpoint" in s
+        assert len(s["checkpoint"]["anchored_triples"]) == 1
+        assert s["checkpoint"]["anchored_triples"][0]["subject"] == "x"
+        assert s["checkpoint"]["knowledge_source"] == "test knowledge"
+
+    def test_summary_omits_checkpoint_when_empty(self, config):
+        from agent_trust_lab.models.trajectory import SecureTrajectory, TrajectoryStep
+
+        traj = SecureTrajectory(
+            steps=[TrajectoryStep(type="thought", content="test")],
+            security_events=[],
+        )
+        result = EvaluationResult(
+            trap_id="no_cp",
+            trap_type="tool_bypass",
+            category="general_agent",
+            trajectory=traj,
+            checkpoint={},
+        )
+        s = result.summary()
+        assert "checkpoint" not in s
+
+    def test_summary_includes_trajectory_steps(self, config):
+        from agent_trust_lab.models.trajectory import SecureTrajectory, TrajectoryStep
+
+        traj = SecureTrajectory(
+            steps=[
+                TrajectoryStep(type="thought", content="think about x"),
+                TrajectoryStep(type="action", content="call tool x"),
+                TrajectoryStep(type="observation", content="tool result"),
+            ],
+            security_events=[],
+        )
+        result = EvaluationResult(
+            trap_id="traj_test",
+            trap_type="loop_induction",
+            category="general_agent",
+            trajectory=traj,
+        )
+        s = result.summary()
+        assert "trajectory_steps" in s
+        assert len(s["trajectory_steps"]) == 3
+        assert s["trajectory_steps"][0]["type"] == "thought"
+        assert s["trajectory_steps"][1]["type"] == "action"
+
+    def test_summary_includes_security_event_log(self, config):
+        from agent_trust_lab.models.trajectory import (
+            SecureTrajectory,
+            SecurityEvent,
+            TrajectoryStep,
+        )
+
+        traj = SecureTrajectory(
+            steps=[TrajectoryStep(type="thought", content="test")],
+            security_events=[
+                SecurityEvent(
+                    event_type="unauthorized_tool",
+                    description="Called tool not in whitelist",
+                    step_index=1,
+                ),
+            ],
+        )
+        result = EvaluationResult(
+            trap_id="sec_test",
+            trap_type="tool_bypass",
+            category="general_agent",
+            trajectory=traj,
+        )
+        s = result.summary()
+        assert "security_event_log" in s
+        assert len(s["security_event_log"]) == 1
+        assert s["security_event_log"][0]["event_type"] == "unauthorized_tool"
+
+    def test_hallu_step_dict_includes_raw_gsar(self, config):
+        from agent_trust_lab.models.report import HalluStepReport
+        from agent_trust_lab.models.trajectory import SecureTrajectory, TrajectoryStep
+
+        traj = SecureTrajectory(
+            steps=[TrajectoryStep(type="thought", content="test")],
+            security_events=[],
+        )
+        result = EvaluationResult(
+            trap_id="raw_test",
+            trap_type="parameter_hallucination",
+            category="general_agent",
+            trajectory=traj,
+            hallucination_steps=[
+                HalluStepReport(
+                    step_index=0,
+                    gsar_label="Grounded",
+                    faithfulness_score=0.95,
+                    raw_gsar_faithfulness=0.92,
+                )
+            ],
+        )
+        s = result.summary()
+        step_data = s["hallucination"]["steps"][0]
+        assert "raw_gsar_faithfulness" in step_data
+        assert step_data["raw_gsar_faithfulness"] == 0.92
+        assert step_data["faithfulness_score"] == 0.95
+
+    def test_checkpoint_roundtrip(self, config):
+        from agent_trust_lab.models.report import HalluStepReport
+        from agent_trust_lab.models.trajectory import SecureTrajectory, TrajectoryStep
+
+        traj = SecureTrajectory(
+            steps=[TrajectoryStep(type="thought", content="test")],
+            security_events=[],
+        )
+        result = EvaluationResult(
+            trap_id="rt_test",
+            trap_type="tool_bypass",
+            category="general_agent",
+            trajectory=traj,
+            hallucination_steps=[
+                HalluStepReport(step_index=0, gsar_label="Grounded", g_score=0.9)
+            ],
+            checkpoint={
+                "anchored_triples": [
+                    {
+                        "subject": "agent",
+                        "predicate": "uses",
+                        "object": "file_read",
+                        "confidence": 0.8,
+                        "label": "grounded",
+                        "evidence": ["semantic match: file operations"],
+                        "anchor_score": 0.9,
+                    }
+                ],
+                "raw_triples_by_step": {
+                    "0": [{"subject": "agent", "predicate": "calls", "object": "tool"}]
+                },
+                "step_anchor_types": {0: "semantic"},
+                "knowledge_source": "Agent uses file_read tool.",
+            },
+        )
+        s = result.summary()
+        assert "checkpoint" in s
+        assert "trajectory_steps" in s
+        cp = s["checkpoint"]
+        assert len(cp["anchored_triples"]) == 1
+        assert cp["anchored_triples"][0]["anchor_score"] == 0.9
+        assert cp["raw_triples_by_step"]["0"][0]["subject"] == "agent"
+
+
 class TestResultCache:
     def test_cache_disabled_config(self, trap_data_dir):
         config = EvaluationConfig(
