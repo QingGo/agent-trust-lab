@@ -28,7 +28,7 @@ A systematic security evaluation framework that subjects AI agents to adversaria
 
 ## Purpose
 
-Modern AI agents (LangChain, OpenAI, Codex, Claude Code, Gemini CLI, OpenCode) execute multi-step tasks with tool access — but how trustworthy are they?
+Modern AI agents (LangChain, OpenAI, Codex, and emerging CLI-based agents) execute multi-step tasks with tool access — but how trustworthy are they?
 
 **Agent Trust Lab** answers this question by:
 
@@ -39,7 +39,7 @@ Modern AI agents (LangChain, OpenAI, Codex, Claude Code, Gemini CLI, OpenCode) e
 5. **Calibration** — Platt scaling against human annotations with Cohen's κ agreement metrics
 6. **Multi-Model Comparison** — Batch evaluation with concurrent execution, comparison dashboards, and share cards
 
-**Target agents**: LangChain agents with function calling, code-generation agents (Codex), CLI-based agents (OpenCode, Claude Code, Gemini CLI), and custom harnesses via the adapter registry.
+**Target agents**: LangChain agents with function calling, code-generation agents (Codex), and custom harnesses via the adapter registry. CLI-based agent testing (OpenCode, Claude Code, Gemini CLI) is under active development.
 
 ---
 
@@ -58,8 +58,7 @@ Evaluated across **160 traps / 21 attack types** on DeepSeek models:
 
 > *Composite Trust Score = (G + F + (1−U) + (1−C)) / 4*
 
-**Key findings**:
-- CLI-based agents (OpenCode, Claude Code, Gemini CLI) show higher vulnerability to tool bypass attacks compared to API-based agents
+**Key findings** (based on LangChain and Codex harnesses):
 - Reasoning models (thinking mode enabled) show ~15% lower hallucination rates but ~8% longer response times
 - ONNX NLI cross-validation catches ~12% of GSAR false negatives missed by LLM judge alone
 - Hardest attack types: backdoor injection, multi-turn pollution, retrieval contamination
@@ -141,7 +140,7 @@ graph TB
 
     entry --> orch["Orchestrator<br/>run_single · run_traps · replay"]
 
-    orch --> adapters["Agent Adapters (8 harnesses)<br/>LangChain · Codex · OpenAI · OpenCode · ClaudeCode · Gemini · Docker · DryRun"]
+    orch --> adapters["Agent Adapters<br/>LangChain · Codex · OpenAI · Docker · DryRun<br/>(OpenCode · ClaudeCode · Gemini — in development)"]
 
     subgraph hallukg["Hallucination KG · 6 modules"]
         direction TB
@@ -168,16 +167,16 @@ graph TB
 
 | Harness | Type | LLM Calls | Step Types |
 |---------|------|-----------|------------|
-| **LangChain** | API | Real (DeepSeek) | `thought`, `action`, `observation` |
-| **Codex** | API | Real (DeepSeek) | `code_thought`, `code_action`, `code_result` |
+| **LangChain** | OpenAI SDK | Real (DeepSeek) | `thought`, `action`, `observation` |
+| **Codex** | OpenAI SDK | Real (DeepSeek) | `code_thought`, `code_action`, `code_result` |
 | **OpenAI Functions** | API | Stub | Same as LangChain |
-| **OpenCode CLI** | Subprocess | Real CLI | `harness_init`, `cli_stdout`, `cli_stderr` |
-| **Claude Code CLI** | Subprocess | Real CLI | `harness_init`, `cli_stdout`, `cli_stderr` |
-| **Gemini CLI** | Subprocess | Real CLI | `harness_init`, `cli_stdout`, `cli_stderr` |
+| **OpenCode CLI** | Subprocess | In development ⚠️ | `harness_init`, `cli_stdout`, `cli_stderr` |
+| **Claude Code CLI** | Subprocess | In development ⚠️ | `harness_init`, `cli_stdout`, `cli_stderr` |
+| **Gemini CLI** | Subprocess | In development ⚠️ | `harness_init`, `cli_stdout`, `cli_stderr` |
 | **Docker Sandbox** | Container | N/A | Code execution isolation |
 | **Dry Run** | Stub | N/A | No-op for testing |
 
-All harnesses support: thinking mode, reasoning effort control, tool whitelist enforcement, argument filtering, state snapshot paths.
+All harnesses support: thinking mode, reasoning effort control, tool whitelist enforcement, argument filtering, state snapshot paths. CLI agent harnesses (OpenCode, Claude Code, Gemini CLI) are experimental — they fall back to stub mode when the CLI binary is unavailable or the interface is incompatible.
 
 ---
 

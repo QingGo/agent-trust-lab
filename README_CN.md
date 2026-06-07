@@ -28,7 +28,7 @@
 
 ## 目的
 
-现代 AI Agent（LangChain、OpenAI、Codex、Claude Code、Gemini CLI、OpenCode）在工具调用的支持下执行多步骤任务——但它们有多可信？
+现代 AI Agent（基于 OpenAI 兼容 API 的 Agent）在工具调用的支持下执行多步骤任务——但它们有多可信？
 
 **Agent Trust Lab** 通过以下方式回答这个问题：
 
@@ -39,7 +39,7 @@
 5. **校准** — 基于人工标注的 Platt 缩放，配以 Cohen's κ 一致性度量
 6. **多模型对比** — 批量评估支持并发执行、对比仪表盘和分享卡片
 
-**目标 Agent**：支持函数调用的 LangChain Agent、代码生成 Agent（Codex）、基于 CLI 的 Agent（OpenCode、Claude Code、Gemini CLI），以及通过适配器注册的自定义 Agent。
+**目标 Agent**：支持函数调用的 OpenAI 兼容 API Agent 和代码生成 Agent。CLI 类 Agent（OpenCode、Claude Code、Gemini CLI）的适配器正在开发中。
 
 ---
 
@@ -58,8 +58,7 @@
 
 > *综合信任分 = (G + F + (1−U) + (1−C)) / 4*
 
-**关键发现**：
-- 基于 CLI 的 Agent（OpenCode、Claude Code、Gemini CLI）比 API Agent 更容易受到工具绕过攻击
+**关键发现**（基于 API Agent 适配器的评估）：
 - 启用推理模式（thinking）后，幻觉率降低约 15%，但响应时间增加约 8%
 - ONNX NLI 交叉验证捕获了约 12% 被 LLM 评判器遗漏的 GSAR 假阴性
 - 最难防御的攻击类型：后门注入、多轮污染、检索污染
@@ -141,7 +140,7 @@ graph TB
 
     entry --> orch["调度器<br/>run_single · run_traps · replay"]
 
-    orch --> adapters["Agent 适配器（8 种）<br/>LangChain · Codex · OpenAI · OpenCode · ClaudeCode · Gemini · Docker · DryRun"]
+    orch --> adapters["Agent 适配器<br/>LangChain · Codex · OpenAI · Docker · DryRun<br/>（OpenCode · ClaudeCode · Gemini — 开发中）"]
 
     subgraph hallukg["幻觉知识图谱 · 6 个模块"]
         direction TB
@@ -168,16 +167,16 @@ graph TB
 
 | 适配器 | 类型 | LLM 调用 | 步骤类型 |
 |--------|------|---------|----------|
-| **LangChain** | API | 真实（DeepSeek） | `thought`, `action`, `observation` |
-| **Codex** | API | 真实（DeepSeek） | `code_thought`, `code_action`, `code_result` |
+| **LangChain** | OpenAI SDK | 真实（DeepSeek） | `thought`, `action`, `observation` |
+| **Codex** | OpenAI SDK | 真实（DeepSeek） | `code_thought`, `code_action`, `code_result` |
 | **OpenAI Functions** | API | 桩（stub） | 与 LangChain 相同 |
-| **OpenCode CLI** | 子进程 | 真实 CLI | `harness_init`, `cli_stdout`, `cli_stderr` |
-| **Claude Code CLI** | 子进程 | 真实 CLI | `harness_init`, `cli_stdout`, `cli_stderr` |
-| **Gemini CLI** | 子进程 | 真实 CLI | `harness_init`, `cli_stdout`, `cli_stderr` |
+| **OpenCode CLI** | 子进程 | 开发中 ⚠️ | `harness_init`, `cli_stdout`, `cli_stderr` |
+| **Claude Code CLI** | 子进程 | 开发中 ⚠️ | `harness_init`, `cli_stdout`, `cli_stderr` |
+| **Gemini CLI** | 子进程 | 开发中 ⚠️ | `harness_init`, `cli_stdout`, `cli_stderr` |
 | **Docker 沙箱** | 容器 | N/A | 代码执行隔离 |
 | **Dry Run** | 桩（stub） | N/A | 测试用空操作 |
 
-所有适配器支持：推理模式（thinking）、推理强度控制、工具白名单、参数过滤、状态快照路径。
+所有适配器支持：推理模式（thinking）、推理强度控制、工具白名单、参数过滤、状态快照路径。CLI Agent 适配器（OpenCode、Claude Code、Gemini CLI）为实验性质——当 CLI 二进制不可用或接口不兼容时自动回退到 stub 模式。
 
 ---
 
