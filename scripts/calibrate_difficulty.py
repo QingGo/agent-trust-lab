@@ -14,8 +14,8 @@ Difficulty semantics: trap design sophistication (stealthiness/cleverness).
 
 Usage:
     python scripts/calibrate_difficulty.py --model deepseek-v4-pro
-    python scripts/calibrate_difficulty.py --model deepseek-v4-pro --limit 10 --output difficulty_cal.json
-    python scripts/calibrate_difficulty.py --model deepseek-v4-flash --runs 3 --limit 10 --output cal.json
+    python scripts/calibrate_difficulty.py --model deepseek-v4-pro --limit 10 --output-dir difficulty_cal.json
+    python scripts/calibrate_difficulty.py --model deepseek-v4-flash --runs 3 --limit 10 --output-dir cal.json
 """
 
 import argparse

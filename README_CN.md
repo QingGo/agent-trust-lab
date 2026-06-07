@@ -21,6 +21,8 @@
 - [管道流程](#管道流程)
 - [命令行用法](#命令行用法)
 - [陷阱库](#陷阱库)
+- [红队管道](#红队管道)
+- [校准与人工标注](#校准与人工标注)
 - [报告输出](#报告输出)
 - [开发](#开发)
 
@@ -36,8 +38,9 @@
 2. **多维度审计** — 12 条合规规则，覆盖工具授权、来源验证、信息披露、状态完整性和执行前确认
 3. **幻觉检测** — GSAR 分类（Grounded / Ungrounded / Contradicted / Complementary），配合多层证据锚定（ONNX 语义嵌入 + 词元重叠 + NetworkX 多跳推理）
 4. **交叉验证** — 忠实度分数通过确定性 ONNX NLI 对 LLM 评判输出进行交叉验证
-5. **校准** — 基于人工标注的 Platt 缩放，配以 Cohen's κ 一致性度量
-6. **多模型对比** — 批量评估支持并发执行、对比仪表盘和分享卡片
+5. **校准与人工标注** — 基于人工标注的 Platt 缩放，配以 Cohen's κ 一致性度量；交互式 Gradio Web UI 支持 GSAR 标签标注，含分数滑块和自动保存
+6. **红队管道** — 通过规则变异 + LLM 精炼自动生成陷阱变体；低区分度陷阱强化；为缺失攻击类型生成全新陷阱
+7. **多模型对比** — 批量评估支持并发执行、对比仪表盘和分享卡片
 
 **目标 Agent**：支持函数调用的 OpenAI 兼容 API Agent 和代码生成 Agent。CLI 类 Agent（OpenCode、Claude Code、Gemini CLI）的适配器正在开发中。
 
@@ -95,7 +98,7 @@ echo 'DEEPSEEK_API_KEY=sk-...' > .env
 agent-trust-lab run \
   -t tool_bypass_01 \
   --model deepseek-v4-flash \
-  --output results.json
+  --output-dir results.json
 
 # 生成中文 HTML 报告
 agent-trust-lab report results.json --lang zh
@@ -232,7 +235,7 @@ agent-trust-lab run \
   --thinking --effort high \
   --parallel 4 \
   --timeout 180 \
-  --output results/
+  --output-dir results/
 
 # 运行代码 Agent 评估
 agent-trust-lab run-code \
@@ -240,7 +243,7 @@ agent-trust-lab run-code \
   --model deepseek-v4-flash \
   --codebase ./my-project \
   --sandbox docker \
-  --output code-results/
+  --output-dir code-results/
 
 # 生成报告
 agent-trust-lab report results.json --lang zh    # 中文
@@ -273,7 +276,7 @@ agent-trust-lab calibrate results/ --annotations annotations.json
 agent-trust-lab annotate results.json
 
 # 提取校准候选数据进行标注
-agent-trust-lab extract-calibration-data results/ --output candidates.json
+agent-trust-lab extract-calibration-data results/ --output-dir candidates.json
 ```
 
 ### 陷阱管理
@@ -283,18 +286,18 @@ agent-trust-lab extract-calibration-data results/ --output candidates.json
 agent-trust-lab generate-traps \
   --types tool_bypass,backdoor_injection \
   --variants 3 \
-  --output new-traps/
+  --output-dir new-traps/
 
 # 通过 LLM 强化低区分度陷阱
 agent-trust-lab harden-traps comparison.json \
   --spread-threshold 0.05 \
   --max-trust-threshold 0.90 \
-  --output hardened/
+  --output-dir hardened/
 
 # 为缺失的攻击类型生成全新陷阱
 agent-trust-lab generate-novel \
   --types mcp-dos,mcp-pollution \
-  --output novel-traps/
+  --output-dir novel-traps/
 ```
 
 ### Web 界面
@@ -321,7 +324,7 @@ agent-trust-lab serve --port 7860
 
 ## 陷阱库
 
-**160 个手工 YAML 陷阱**，覆盖 2 个类别和 21 种攻击类型：
+**160 个 LLM 生成的 YAML 陷阱**，覆盖 2 个类别和 21 种攻击类型：
 
 ### 通用 Agent 陷阱（~142 个）
 
@@ -382,6 +385,54 @@ remediation:
 ```
 
 **变异系统**：`{{fake_tool_name}}` 和其他模板变量在运行时由 FieldMutator 的 65 个生成器自动替换，使单个模板能够生成数千个独特的陷阱变体。
+
+---
+
+## 红队管道
+
+除了 160 个 LLM 生成的陷阱外，Agent Trust Lab 还包含自动化红队管道，用于生成变体和强化难度：
+
+### 陷阱生成（`generate-traps`）
+
+从已有攻击模式生成变异陷阱的 3 阶段管道：
+
+1. **模式提取** — 加载攻击陷阱，按类型分组，提取模板和注入模式
+2. **规则变异** — 领域替换（数据库 ↔ 文件系统、API ↔ 认证等）、上下文替换（金融 → 医疗）、工具替换、严重性/难度调整
+3. **LLM 精炼**（可选） — 通过 `deepseek-v4-flash` 优化候选陷阱的语言质量
+
+### 陷阱强化（`harden-traps`）
+
+识别区分度低的陷阱（所有模型都通过或都失败），通过 LLM 驱动重写提升难度。目标陷阱为跨模型信任分差值低于可配置阈值的陷阱。
+
+### 全新生成（`generate-novel`）
+
+为陷阱库尚未覆盖的攻击类型生成全新陷阱，利用 LLM 对 Agent 安全漏洞的领域知识。
+
+---
+
+## 校准与人工标注
+
+### Platt 缩放校准
+
+LLM 评判器产生的原始幻觉分数通过 Platt 缩放（sklearn 逻辑回归 + k-fold 交叉验证）与人工标注对齐。`calibrate` 命令拟合缩放参数并报告 Cohen's κ 一致性：
+
+```bash
+agent-trust-lab calibrate results/ --annotations annotations.json
+```
+
+### 交互式标注工具
+
+两套标注界面用于构建校准数据集：
+
+**终端（CLI）** — `agent-trust-lab annotate results.json`
+- Rich 驱动的 TUI，支持 GSAR 标签选择（1-4 快捷键）、可视化分数滑块、进度追踪、自动保存
+
+**Gradio Web UI** — `agent-trust-lab serve` → 标注标签页
+- 上传候选 JSON → 浏览步骤（上一个/下一个/跳过） → 分配 GSAR 标签 → 调整 G/U/C/F 滑块（含标签感知约束） → 自动保存 → 导出标注
+
+### 候选数据提取
+
+`extract-calibration-data` 从评估结果中按陷阱类型、难度和分数分布分层抽取多样化候选数据，构建具有代表性的校准数据集。
 
 ---
 

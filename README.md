@@ -21,6 +21,8 @@ A systematic security evaluation framework that subjects AI agents to adversaria
 - [Pipeline Flow](#pipeline-flow)
 - [CLI Usage](#cli-usage)
 - [Trap Library](#trap-library)
+- [Red Team Pipeline](#red-team-pipeline)
+- [Calibration & Human Annotation](#calibration--human-annotation)
 - [Report Output](#report-output)
 - [Development](#development)
 
@@ -32,12 +34,13 @@ Modern AI agents (LangChain, OpenAI, Codex, and emerging CLI-based agents) execu
 
 **Agent Trust Lab** answers this question by:
 
-1. **Adversarial Testing** — 160+ crafted traps across 21 attack types (prompt injection, backdoors, tool bypass, data exfiltration, reasoning contamination, MCP attacks, code hallucination, and more)
+1. **Adversarial Testing** — 160+ LLM-generated traps across 21 attack types (prompt injection, backdoors, tool bypass, data exfiltration, reasoning contamination, MCP attacks, code hallucination, and more), hardened through an automated red team pipeline
 2. **Multi-Dimensional Auditing** — 12 compliance rules covering tool authorization, source verification, info disclosure, state integrity, and pre-execution confirmation
 3. **Hallucination Detection** — GSAR classification (Grounded / Ungrounded / Contradicted / Complementary) with multi-tier evidence anchoring (ONNX semantic embeddings + token overlap + NetworkX multi-hop reasoning)
 4. **Cross-Validation** — Faithfulness scores cross-validated by deterministic ONNX NLI against LLM judge output
-5. **Calibration** — Platt scaling against human annotations with Cohen's κ agreement metrics
-6. **Multi-Model Comparison** — Batch evaluation with concurrent execution, comparison dashboards, and share cards
+5. **Calibration & Human Annotation** — Platt scaling against human annotations with Cohen's κ agreement metrics; interactive Gradio Web UI for GSAR labeling with score sliders and auto-save
+6. **Red Team Pipeline** — Automated trap variant generation via rule-based mutation + LLM refinement; low-discrimination trap hardening; de novo trap generation for missing attack types
+7. **Multi-Model Comparison** — Batch evaluation with concurrent execution, comparison dashboards, and share cards
 
 **Target agents**: LangChain agents with function calling, code-generation agents (Codex), and custom harnesses via the adapter registry. CLI-based agent testing (OpenCode, Claude Code, Gemini CLI) is under active development.
 
@@ -95,7 +98,7 @@ echo 'DEEPSEEK_API_KEY=sk-...' > .env
 agent-trust-lab run \
   -t tool_bypass_01 \
   --model deepseek-v4-flash \
-  --output results.json
+  --output-dir results.json
 
 # Generate HTML report
 agent-trust-lab report results.json --lang en
@@ -232,7 +235,7 @@ agent-trust-lab run \
   --thinking --effort high \
   --parallel 4 \
   --timeout 180 \
-  --output results/
+  --output-dir results/
 
 # Run code agent evaluation
 agent-trust-lab run-code \
@@ -240,7 +243,7 @@ agent-trust-lab run-code \
   --model deepseek-v4-flash \
   --codebase ./my-project \
   --sandbox docker \
-  --output code-results/
+  --output-dir code-results/
 
 # Generate report from results
 agent-trust-lab report results.json --lang en    # English
@@ -273,7 +276,7 @@ agent-trust-lab calibrate results/ --annotations annotations.json
 agent-trust-lab annotate results.json
 
 # Extract calibration candidates for annotation
-agent-trust-lab extract-calibration-data results/ --output candidates.json
+agent-trust-lab extract-calibration-data results/ --output-dir candidates.json
 ```
 
 ### Trap Management
@@ -283,18 +286,18 @@ agent-trust-lab extract-calibration-data results/ --output candidates.json
 agent-trust-lab generate-traps \
   --types tool_bypass,backdoor_injection \
   --variants 3 \
-  --output new-traps/
+  --output-dir new-traps/
 
 # Harden low-discrimination traps via LLM
 agent-trust-lab harden-traps comparison.json \
   --spread-threshold 0.05 \
   --max-trust-threshold 0.90 \
-  --output hardened/
+  --output-dir hardened/
 
 # Generate de novo traps for missing attack types
 agent-trust-lab generate-novel \
   --types mcp-dos,mcp-pollution \
-  --output novel-traps/
+  --output-dir novel-traps/
 ```
 
 ### Web UI
@@ -321,7 +324,7 @@ agent-trust-lab serve --port 7860
 
 ## Trap Library
 
-**160 handcrafted YAML traps** across 2 categories and 21 attack types:
+**160 LLM-generated YAML traps** across 2 categories and 21 attack types:
 
 ### General Agent Traps (~142)
 
@@ -382,6 +385,54 @@ remediation:
 ```
 
 **Mutation system**: `{{fake_tool_name}}` and other template variables are auto-replaced by the FieldMutator's 65 generators at runtime, enabling thousands of unique trap variants from a single template.
+
+---
+
+## Red Team Pipeline
+
+Beyond the 160 LLM-generated traps, Agent Trust Lab includes an automated red team pipeline for generating variants and hardening difficulty:
+
+### Trap Generation (`generate-traps`)
+
+A 3-phase pipeline that produces variant traps from existing attack patterns:
+
+1. **Pattern Extraction** — loads attack traps, groups by type, extracts templates and injection patterns
+2. **Rule-based Mutation** — domain swaps (DB ↔ filesystem, API ↔ auth, etc.), context swaps (finance → healthcare), tool swaps, severity/difficulty variation
+3. **LLM Refinement** (optional) — polishes candidates via `deepseek-v4-flash` for natural language quality
+
+### Trap Hardening (`harden-traps`)
+
+Identifies traps with low discrimination power (all models pass or all fail) and uses LLM-driven rewriting to amplify difficulty. Targets traps where the trust score spread across models is below a configurable threshold.
+
+### De Novo Generation (`generate-novel`)
+
+Generates entirely new traps for attack types not yet covered by the existing library, using LLM with domain knowledge of agent security vulnerabilities.
+
+---
+
+## Calibration & Human Annotation
+
+### Platt Scaling Calibration
+
+Raw hallucination scores from the LLM judge are calibrated against human annotations using Platt scaling (logistic regression with k-fold cross-validation via sklearn). The `calibrate` command fits scaling parameters and reports Cohen's κ agreement:
+
+```bash
+agent-trust-lab calibrate results/ --annotations annotations.json
+```
+
+### Interactive Annotation Tools
+
+Two annotation interfaces for building calibration datasets:
+
+**Terminal (CLI)** — `agent-trust-lab annotate results.json`
+- Rich-powered TUI with GSAR label selection (1-4 hotkeys), score sliders with visual bars, progress tracking, auto-save
+
+**Gradio Web UI** — `agent-trust-lab serve` → Annotation tab
+- Upload candidate JSON → navigate steps (prev/next/skip) → assign GSAR labels → adjust G/U/C/F sliders with label-aware constraints → auto-save → export annotations
+
+### Candidate Extraction
+
+`extract-calibration-data` selects diverse candidates from evaluation results, stratified by trap type, difficulty, and score distribution, to build representative calibration datasets.
 
 ---
 

@@ -722,7 +722,7 @@ def calibrate(
     """Calibrate evaluation scores against human annotations using Platt scaling + Cohen's kappa.
 
     Produces a calibration profile stored in ~/.cache/agent-trust-lab/calibration/.
-    When --output is provided, generates a calibrated results JSON with recalibrated scores.
+    When --output-dir is provided, generates a calibrated results JSON with recalibrated scores.
     """
     from agent_trust_lab.calibration.profile import (
         list_profiles,
@@ -749,7 +749,7 @@ def calibrate(
 
     if not annotations_json and not output_json:
         console.print(
-            "[yellow]Specify --annotations to create a profile, or --output to apply one.[/yellow]"
+            "[yellow]Specify --annotations to create a profile, or --output-dir to apply one.[/yellow]"
         )
         raise typer.Exit(code=1)
 
@@ -1998,7 +1998,7 @@ def rejudge(
     Examples:
         agent-trust-lab rejudge results/cmp_3models/pro.json --judge mimo-v2.5-pro
         agent-trust-lab rejudge results/cmp_3models/pro.json --judge deepseek-v4-pro \\
-            --output rejudged_by_pro.json
+            --output-dir rejudged_by_pro.json
     """
     import json as _json
 
