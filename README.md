@@ -48,23 +48,23 @@ Modern AI agents (LangChain, OpenAI, Codex, and emerging CLI-based agents) execu
 
 ## Current Results
 
-Evaluated across **160 traps / 21 attack types** on DeepSeek models:
+Evaluated across **76 curated traps / 31 attack types** (streamlined from 160 for improved discrimination):
 
-| Metric | deepseek-v4-flash | deepseek-v4-pro |
-|--------|------------------|-----------------|
-| **Compliance Pass Rate** | ~72% | ~78% |
-| **Grounded Score (G)** | 0.78 | 0.82 |
-| **Faithfulness Score (F)** | 0.74 | 0.79 |
-| **Ungrounded Score (U)** | 0.12 | 0.09 |
-| **Contradicted Score (C)** | 0.08 | 0.05 |
-| **Composite Trust Score** | 0.83 | 0.87 |
+| Model | Pass | G | F | U(↓) | C(↓) | G* |
+|------|:---:|:---:|:---:|:---:|:---:|:---:|
+| deepseek-v4-flash (no-think) | 63% | 0.44 | 0.89 | 0.31 | 0.20 | 0.15 |
+| deepseek-v4-flash (think max) | 61% | 0.47 | 0.88 | 0.39 | 0.19 | 0.14 |
+| deepseek-v4-pro (no-think) | 62% | 0.57 | 0.87 | 0.41 | 0.12 | 0.22 |
+| deepseek-v4-pro (think max) | 61% | 0.56 | 0.85 | 0.43 | 0.12 | 0.20 |
 
-> *Composite Trust Score = (G + F + (1−U) + (1−C)) / 4*
+> **G** = GSAR LLM Judge groundedness ｜ **F** = ONNX NLI faithfulness ｜ **U** = over-claim rate (lower is better) ｜ **C** = missed-evidence rate (lower is better) ｜ **G\*** = true grounded rate (higher is better)
 
-**Key findings** (based on LangChain and Codex harnesses):
-- Reasoning models (thinking mode enabled) show ~15% lower hallucination rates but ~8% longer response times
-- ONNX NLI cross-validation catches ~12% of GSAR false negatives missed by LLM judge alone
-- Hardest attack types: backdoor injection, multi-turn pollution, retrieval contamination
+**Key findings**:
+- Pro models achieve higher true groundedness (G* 0.22 vs 0.15) but are more overconfident (U 0.43 vs 0.31) — they claim "Grounded" more often without anchor evidence
+- Flash models are more conservative (low U) but miss more evidence (high C)
+- Thinking mode increases overconfidence (U rises) for both models without improving pass rate
+- ONNX NLI (deberta-base-mnli, 532MB local) restores F-score differentiation vs TF-IDF fallback
+- Anchor-derived U/C scores (deterministic, not LLM judge) provide 4x better discrimination than original LLM-only U/C
 
 ---
 
@@ -324,7 +324,7 @@ agent-trust-lab serve --port 7860
 
 ## Trap Library
 
-**160 LLM-generated YAML traps** across 2 categories and 21 attack types:
+**76 curated YAML traps** (streamlined from 160 for improved discrimination) across 2 categories and 31 attack types:
 
 ### General Agent Traps (~142)
 
@@ -457,6 +457,33 @@ When running `batch` or `report` with merged results:
 
 ---
 
+## Scoring Methodology
+
+### Dimensions
+
+| Dimension | Source | Method |
+|-----------|--------|--------|
+| **Pass Rate** | PAEAuditor (12 rules) | Compliance audit — tool authorization, cmd injection, data exfiltration, etc. |
+| **G (Grounded)** | GSAR LLM Judge | LLM classifies each agent step against anchored knowledge triples |
+| **F (Faithfulness)** | GSAR Judge + ONNX NLI | Blended: `α·GSAR_F + (1-α)·NLI_score` using `deberta-base-mnli` (532MB ONNX) |
+| **U (Over-claim)** | Anchor-derived | Steps where LLM says "Grounded" but anchoring found no evidence — deterministic |
+| **C (Missed-evidence)** | Anchor-derived | Steps where LLM missed evidence that anchoring found — deterministic |
+| **G\* (True Grounded)** | LLM + Anchor agreement | Steps where both LLM judge and anchoring system agree on "Grounded" |
+
+### Anchoring System
+
+Uses `all-MiniLM-L6-v2` (86MB ONNX) to compute semantic cosine similarity between agent output triples and knowledge source triples. Runs locally via `onnxruntime` — no API calls for inference.
+
+### ONNX Dependencies
+
+Two ONNX models run locally for deterministic scoring:
+- **all-MiniLM-L6-v2** (86MB): Semantic embeddings for evidence anchoring
+- **deberta-base-mnli** (532MB): Natural Language Inference for faithfulness cross-validation
+
+Export via `agent-trust-lab setup-onnx`. Models cached at `~/.cache/agent-trust-lab/onnx/`.
+
+---
+
 ## Development
 
 ### Dev Setup
@@ -501,7 +528,7 @@ src/agent_trust_lab/
 ├── batch.py              # Multi-config batch evaluation + concurrent mode
 ├── llm.py                # LLM client factory (DeepSeek API)
 ├── log.py                # Logging configuration
-├── onnx_setup.py         # ONNX model export (roberta-mnli, MiniLM)
+├── onnx_setup.py         # ONNX model export (deberta-base-mnli, MiniLM)
 ├── models/               # Pydantic schemas
 │   ├── trap.py           # EnhancedTrapDef
 │   ├── trajectory.py     # SecureTrajectory, AgentHarness ABC

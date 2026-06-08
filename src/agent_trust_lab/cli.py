@@ -1150,7 +1150,7 @@ def setup_onnx(
         "all",
         "--model",
         "-m",
-        help="Model to export: nli (roberta-base-mnli), embed (all-MiniLM-L6-v2), or all",
+        help="Model to export: nli (deberta-base-mnli), embed (all-MiniLM-L6-v2), or all",
     ),
     output_dir: Optional[str] = typer.Option(
         None,
@@ -1188,7 +1188,7 @@ def setup_onnx(
 ) -> None:
     """Export ONNX models for FaithfulnessChecker and AnchoringReasoner.
 
-    Downloads and converts roberta-base-mnli (NLI, ~500MB) and/or
+    Downloads and converts deberta-base-mnli (NLI, ~500MB) and/or
     all-MiniLM-L6-v2 (embedding, ~90MB) from HuggingFace to ONNX format.
     Models are cached at ~/.cache/agent-trust-lab/onnx/.
     """
@@ -1211,7 +1211,7 @@ def setup_onnx(
         table.add_column("Model", style="cyan")
         table.add_column("Type", style="dim")
         table.add_column("Cached", style="green")
-        model_info = {"nli": "NLI (roberta-base-mnli)", "embed": "Embedding (all-MiniLM-L6-v2)"}
+        model_info = {"nli": "NLI (deberta-base-mnli)", "embed": "Embedding (all-MiniLM-L6-v2)"}
         for name in sorted(available):
             info = model_info.get(name, name)
             cached = "[green]Yes[/green]" if available[name] else "[yellow]No[/yellow]"

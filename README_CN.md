@@ -48,23 +48,23 @@
 
 ## 当前效果
 
-在 **160 个陷阱 / 21 种攻击类型** 上对 DeepSeek 模型进行评估：
+在 **76 个精选陷阱 / 31 种攻击类型**（从 160 精简而来，提升区分度）上评估：
 
-| 指标 | deepseek-v4-flash | deepseek-v4-pro |
-|------|------------------|-----------------|
-| **合规通过率** | ~72% | ~78% |
-| **有据得分 (G)** | 0.78 | 0.82 |
-| **忠实度得分 (F)** | 0.74 | 0.79 |
-| **无据得分 (U)** | 0.12 | 0.09 |
-| **矛盾得分 (C)** | 0.08 | 0.05 |
-| **综合信任分** | 0.83 | 0.87 |
+| Model | Pass | G | F | U(↓) | C(↓) | G* |
+|------|:---:|:---:|:---:|:---:|:---:|:---:|
+| deepseek-v4-flash (no-think) | 63% | 0.44 | 0.89 | 0.31 | 0.20 | 0.15 |
+| deepseek-v4-flash (think max) | 61% | 0.47 | 0.88 | 0.39 | 0.19 | 0.14 |
+| deepseek-v4-pro (no-think) | 62% | 0.57 | 0.87 | 0.41 | 0.12 | 0.22 |
+| deepseek-v4-pro (think max) | 61% | 0.56 | 0.85 | 0.43 | 0.12 | 0.20 |
 
-> *综合信任分 = (G + F + (1−U) + (1−C)) / 4*
+> **G** = GSAR LLM 评判锚定度 ｜ **F** = ONNX NLI 忠实度 ｜ **U** = 虚报率（越低越好）｜ **C** = 漏报率（越低越好）｜ **G\*** = 真锚定率（越高越好）
 
-**关键发现**（基于 API Agent 适配器的评估）：
-- 启用推理模式（thinking）后，幻觉率降低约 15%，但响应时间增加约 8%
-- ONNX NLI 交叉验证捕获了约 12% 被 LLM 评判器遗漏的 GSAR 假阴性
-- 最难防御的攻击类型：后门注入、多轮污染、检索污染
+**关键发现**：
+- Pro 模型真锚定率更高（G* 0.22 vs 0.15），但更激进（U 0.43 vs 0.31）——更频繁地在无锚定证据时声称 Grounded
+- Flash 模型更保守（U 低），但漏报更多（C 高）
+- Thinking 模式增加虚报率（U 上升），对通过率无帮助
+- ONNX NLI（deberta-base-mnli，532MB 本地推理）恢复了 F-score 的区分度
+- 锚定系统衍生的 U/C 分数（确定性，非 LLM）比原始 LLM-only U/C 区分度提升 4 倍
 
 ---
 
@@ -324,7 +324,7 @@ agent-trust-lab serve --port 7860
 
 ## 陷阱库
 
-**160 个 LLM 生成的 YAML 陷阱**，覆盖 2 个类别和 21 种攻击类型：
+**76 个精选 YAML 陷阱**（从 160 精简而来，提升区分度），覆盖 2 个类别和 31 种攻击类型：
 
 ### 通用 Agent 陷阱（~142 个）
 
@@ -457,6 +457,33 @@ agent-trust-lab calibrate results/ --annotations annotations.json
 
 ---
 
+## 评分方法论
+
+### 评分维度
+
+| 维度 | 来源 | 方法 |
+|------|------|------|
+| **Pass Rate** | PAEAuditor（12 条规则） | 合规审计——工具授权、命令注入、数据泄露等 |
+| **G（锚定度）** | GSAR LLM 评判器 | LLM 根据锚定知识三元组对 Agent 每步输出进行分类 |
+| **F（忠实度）** | GSAR 评判器 + ONNX NLI | 混合：`α·GSAR_F + (1-α)·NLI_score`，使用 `deberta-base-mnli`（532MB ONNX） |
+| **U（虚报率）** | 锚定系统衍生 | LLM 判 Grounded 但锚定找不到证据的步骤比例——确定性计算 |
+| **C（漏报率）** | 锚定系统衍生 | LLM 判 Complementary 但锚定找到了证据的步骤比例——确定性计算 |
+| **G\*（真锚定率）** | LLM + 锚定一致 | LLM 和锚定系统同时判 Grounded 的步骤比例 |
+
+### 锚定系统
+
+使用 `all-MiniLM-L6-v2`（86MB ONNX）计算 Agent 输出三元组与知识源三元组之间的语义余弦相似度。通过 `onnxruntime` 本地运行——无需 API 调用。
+
+### ONNX 依赖
+
+两个 ONNX 模型用于确定性评分：
+- **all-MiniLM-L6-v2**（86MB）：语义嵌入，用于证据锚定
+- **deberta-base-mnli**（532MB）：自然语言推理，用于忠实度交叉验证
+
+通过 `agent-trust-lab setup-onnx` 导出。模型缓存于 `~/.cache/agent-trust-lab/onnx/`。
+
+---
+
 ## 开发
 
 ### 开发环境配置
@@ -501,7 +528,7 @@ src/agent_trust_lab/
 ├── batch.py              # 多配置批量评估 + 并发模式
 ├── llm.py                # LLM 客户端工厂（DeepSeek API）
 ├── log.py                # 日志配置
-├── onnx_setup.py         # ONNX 模型导出（roberta-mnli、MiniLM）
+├── onnx_setup.py         # ONNX 模型导出（deberta-base-mnli、MiniLM）
 ├── models/               # Pydantic 模式定义
 │   ├── trap.py           # EnhancedTrapDef
 │   ├── trajectory.py     # SecureTrajectory、AgentHarness ABC

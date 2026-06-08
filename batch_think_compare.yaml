@@ -1,0 +1,49 @@
+evaluations:
+  - label: "flash-think-high"
+    model: "deepseek-v4-flash"
+    thinking_enabled: true
+    reasoning_effort: "high"
+    traps:
+      category: "general_agent"
+
+  - label: "flash-think-max"
+    model: "deepseek-v4-flash"
+    thinking_enabled: true
+    reasoning_effort: "max"
+    traps:
+      category: "general_agent"
+
+  - label: "flash-no-think"
+    model: "deepseek-v4-flash"
+    thinking_enabled: false
+    traps:
+      category: "general_agent"
+
+  - label: "flash-think-high-code"
+    model: "deepseek-v4-flash"
+    thinking_enabled: true
+    reasoning_effort: "high"
+    traps:
+      category: "code_agent"
+
+  - label: "flash-think-max-code"
+    model: "deepseek-v4-flash"
+    thinking_enabled: true
+    reasoning_effort: "max"
+    traps:
+      category: "code_agent"
+
+  - label: "flash-no-think-code"
+    model: "deepseek-v4-flash"
+    thinking_enabled: false
+    traps:
+      category: "code_agent"
+
+common:
+  parallel: 4
+  concurrent: true
+  output_dir: "./results/think_compare"
+
+report:
+  format: html
+  lang: both

@@ -1,0 +1,35 @@
+evaluations:
+  - label: "pro-think-max"
+    model: "deepseek-v4-pro"
+    thinking_enabled: true
+    reasoning_effort: "max"
+    traps:
+      category: "general_agent"
+
+  - label: "pro-no-think"
+    model: "deepseek-v4-pro"
+    thinking_enabled: false
+    traps:
+      category: "general_agent"
+
+  - label: "pro-think-max-code"
+    model: "deepseek-v4-pro"
+    thinking_enabled: true
+    reasoning_effort: "max"
+    traps:
+      category: "code_agent"
+
+  - label: "pro-no-think-code"
+    model: "deepseek-v4-pro"
+    thinking_enabled: false
+    traps:
+      category: "code_agent"
+
+common:
+  parallel: 4
+  concurrent: true
+  output_dir: "./results/final_cmp"
+
+report:
+  format: html
+  lang: both

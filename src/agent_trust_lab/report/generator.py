@@ -1786,7 +1786,10 @@ class ReportGenerator:
                 "reasoning_effort": cfg.get("reasoning_effort", ""),
                 "config_label": model_label,
             }
-            configs.append(config_entry)
+            # Deduplicate: avoid adding the same config twice when the same
+            # model configuration is used against different trap categories.
+            if model_label not in {c["config_label"] for c in configs}:
+                configs.append(config_entry)
             for r in data.get("results", []):
                 tid = r.get("trap_id", "")
                 if tid not in model_results:

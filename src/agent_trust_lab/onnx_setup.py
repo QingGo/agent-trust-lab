@@ -28,8 +28,8 @@ class ExportConfig:
 _EXPORT_CONFIGS: Dict[str, ExportConfig] = {
     "nli": ExportConfig(
         name="nli",
-        model_name="roberta-base-mnli",
-        subdir="roberta-base-mnli",
+        model_name="microsoft/deberta-base-mnli",
+        subdir="deberta-base-mnli",
     ),
     "embed": ExportConfig(
         name="embed",
@@ -92,7 +92,6 @@ def export_model(
         config.model_name,
         export=True,
         token=hf_token or None,
-        **config.model_kwargs,
     )
 
     model.save_pretrained(output_dir)

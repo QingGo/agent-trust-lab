@@ -28,7 +28,7 @@ def _ensure_nli_loaded(nli_neutral_weight: float = 0.5) -> bool:
 
     import os
 
-    model_path = os.path.join(ONNX_CACHE_DIR, "roberta-base-mnli", "model.onnx")
+    model_path = os.path.join(ONNX_CACHE_DIR, "deberta-base-mnli", "model.onnx")
     tokenizer_path = os.path.join(os.path.dirname(model_path), "tokenizer.json")
 
     if not os.path.exists(model_path) or not os.path.exists(tokenizer_path):
@@ -52,7 +52,7 @@ class FaithfulnessChecker:
     """Check agent output statements against evidence for faithfulness.
 
     Primary: TF-IDF cosine similarity (zero-dependency, deterministic).
-    Optional: ONNX NLI via roberta-base-mnli when onnxruntime is available
+    Optional: ONNX NLI via deberta-base-mnli when onnxruntime is available
     and the ONNX model has been exported to the local cache.
 
     ONNX model is loaded once at module level and reused across all instances.
