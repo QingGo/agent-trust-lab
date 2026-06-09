@@ -26,6 +26,17 @@ Usage:
 from typing import Any, Protocol
 
 
+class _InstructorCompletions(Protocol):
+    """Protocol for instructor's chat.completions.create() interface."""
+    def create(self, **kwargs: Any) -> Any: ...
+
+
+class _InstructorChat(Protocol):
+    """Protocol for instructor's chat attribute with completions proxy."""
+    @property
+    def completions(self) -> "_InstructorCompletions": ...
+
+
 class LLMClient(Protocol):
     """A configured instructor-wrapped LLM client for structured completions.
 
@@ -38,15 +49,8 @@ class LLMClient(Protocol):
     accessed through the instructor interface.
     """
 
-    class ChatProxy(Protocol):
-        class CompletionsProxy(Protocol):
-            def create(self, **kwargs: Any) -> Any: ...
-
-        @property
-        def completions(self) -> "LLMClient.CompletionsProxy": ...
-
     @property
-    def chat(self) -> "LLMClient.ChatProxy": ...
+    def chat(self) -> "_InstructorChat": ...
 
 
 class NLIModel(Protocol):
@@ -100,21 +104,41 @@ class ContainerRuntime(Protocol):
     """A container/sandbox runtime for executing code safely.
 
     Abstract over Docker, Podman, or any other container engine.
+
+    The runtime handles both container execution (run + wait + collect logs)
+    and image lifecycle (pull, verify, cleanup).
     """
 
     def run(
         self,
         image: str,
-        command: str,
+        command: list[str],
         *,
         timeout: int = 30,
-        network: bool = False,
+        network_enabled: bool = False,
         tmpfs_size: str = "64m",
+        work_dir: str = "/tmp/sandbox",
+        labels: dict[str, str] | None = None,
+        read_only: bool = True,
+        mem_limit: str = "128m",
         **kwargs: Any,
     ) -> tuple[int, str, str]:
-        """Run a command inside a container.
+        """Run a command inside a container and collect output.
+
+        Blocks until the container exits or times out.
 
         Returns:
             A tuple of (exit_code, stdout, stderr).
+        """
+        ...
+
+    def ensure_image(self, image_ref: str) -> bool:
+        """Pull and verify a container image. Returns True if available."""
+        ...
+
+    def cleanup_orphaned(self, label: str) -> int:
+        """Remove orphaned containers matching the given label.
+
+        Returns count of containers removed.
         """
         ...

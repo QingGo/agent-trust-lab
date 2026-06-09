@@ -5,6 +5,7 @@ from agent_trust_lab.sandbox.filter import (
     batch_filter,
     filter_command,
 )
+from agent_trust_lab.sandbox.runtime import DockerContainerRuntime, StubContainerRuntime
 
 __all__ = [
     "FORBIDDEN_PATTERNS",
@@ -13,4 +14,6 @@ __all__ = [
     "batch_filter",
     "DockerSandbox",
     "DryRunSandbox",
+    "DockerContainerRuntime",
+    "StubContainerRuntime",
 ]

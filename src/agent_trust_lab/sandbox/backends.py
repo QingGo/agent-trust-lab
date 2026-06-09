@@ -1,7 +1,8 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 from agent_trust_lab.adapters.registry import register_adapter
+from agent_trust_lab.core.protocols import ContainerRuntime
 from agent_trust_lab.log import get_logger
 from agent_trust_lab.models.trajectory import (
     AgentHarness,
@@ -27,6 +28,7 @@ class DockerSandbox(AgentHarness):
     network_enabled: bool = False
     tmpfs_size: str = "64m"
     docker_host: str = ""
+    container_runtime: Optional[ContainerRuntime] = field(default=None, repr=False)
 
     @classmethod
     def from_config(cls, config: "EvaluationConfig") -> "DockerSandbox":
@@ -104,6 +106,14 @@ class DockerSandbox(AgentHarness):
                 error=str(e),
             )
 
+    def _get_runtime(self) -> ContainerRuntime:
+        """Return the configured container runtime, creating a default if needed."""
+        if self.container_runtime is not None:
+            return self.container_runtime
+        from agent_trust_lab.sandbox.runtime import DockerContainerRuntime
+
+        return DockerContainerRuntime(docker_host=self.docker_host)
+
     def _execute_in_container(
         self,
         task: str,
@@ -114,13 +124,12 @@ class DockerSandbox(AgentHarness):
         actual_violations: List[str],
         state_snapshot_paths: Optional[List[str]] = None,
     ) -> SecureTrajectory:
-        from agent_trust_lab.sandbox.image import SANDBOX_LABEL, ImageManager, get_docker_client
+        from agent_trust_lab.sandbox.image import SANDBOX_LABEL
 
-        client = get_docker_client(self.docker_host)
-        img_mgr = ImageManager(client)
-        img_mgr.cleanup_orphaned()
+        runtime = self._get_runtime()
+        runtime.cleanup_orphaned(SANDBOX_LABEL)
 
-        if not img_mgr.ensure_image(self.image):
+        if not runtime.ensure_image(self.image):
             return self._fallback_stub(
                 task=task,
                 steps=steps,
@@ -140,38 +149,20 @@ class DockerSandbox(AgentHarness):
 
         pre_snapshot: dict[str, str] = {}
         if state_snapshot_paths:
-            pre_snapshot = self._take_state_snapshot(client, state_snapshot_paths)
+            pre_snapshot = self._take_state_snapshot(runtime, state_snapshot_paths)
 
-        security_opts = {
-            "read_only": True,
-            "privileged": False,
-            "security_opt": ["no-new-privileges"],
-            "cap_drop": ["ALL"],
-            "tmpfs": {"/tmp": f"size={self.tmpfs_size}"},
-            "mem_limit": "128m",
-            "nano_cpus": 500_000_000,
-            "working_dir": self.work_dir,
-        }
-
-        if not self.network_enabled:
-            security_opts["network_disabled"] = True
-
-        container = None
         try:
-            container = client.containers.run(
+            exit_code, stdout, _stderr = runtime.run(
                 image=self.image,
                 command=["sh", "-c", task],
-                detach=True,
-                auto_remove=True,
+                timeout=self.timeout,
+                network_enabled=self.network_enabled,
+                tmpfs_size=self.tmpfs_size,
+                work_dir=self.work_dir,
                 labels={SANDBOX_LABEL: ""},
-                **security_opts,
             )
 
-            result = container.wait(timeout=self.timeout)
-            exit_code = result.get("StatusCode", -1)
-
-            logs = container.logs(stdout=True, stderr=True).decode("utf-8", errors="replace")
-
+            logs = stdout
             if exit_code != 0:
                 actual_violations.append(f"Container exited with code {exit_code}")
 
@@ -189,7 +180,7 @@ class DockerSandbox(AgentHarness):
 
             if pre_snapshot:
                 for path, pre_hash in pre_snapshot.items():
-                    post_hash = self._get_file_hash(client, path)
+                    post_hash = self._get_file_hash(runtime, path)
                     if post_hash is not None and post_hash != pre_hash:
                         security_events.append(
                             SecurityEvent(
@@ -204,11 +195,6 @@ class DockerSandbox(AgentHarness):
 
         except Exception as e:
             error_msg = str(e)[:500]
-            if container:
-                try:
-                    container.kill()
-                except Exception as e:
-                    logger.warning("Failed to kill sandbox container: %s", e)
             actual_violations.append(error_msg)
             steps.append(
                 TrajectoryStep(
@@ -232,29 +218,23 @@ class DockerSandbox(AgentHarness):
         )
 
     @staticmethod
-    def _get_file_hash(client: Any, path: str) -> Optional[str]:
-        from agent_trust_lab.sandbox.image import SANDBOX_LABEL, ImageManager
-
-        img_mgr = ImageManager(client)
-        if not img_mgr.ensure_image("docker.m.daocloud.io/library/busybox:latest"):
+    def _get_file_hash(runtime: ContainerRuntime, path: str) -> Optional[str]:
+        if not runtime.ensure_image("docker.m.daocloud.io/library/busybox:latest"):
             return None
         try:
-            container = client.containers.run(
+            exit_code, stdout, _stderr = runtime.run(
                 image="docker.m.daocloud.io/library/busybox:latest",
                 command=["sha256sum", path],
-                detach=True,
-                auto_remove=True,
-                read_only=True,
-                privileged=False,
-                security_opt=["no-new-privileges"],
-                cap_drop=["ALL"],
-                network_disabled=True,
+                timeout=10,
+                network_enabled=False,
                 mem_limit="32m",
-                labels={SANDBOX_LABEL: ""},
+                labels={
+                    "agent-trust-lab/sandbox": "",
+                },
             )
-            container.wait(timeout=10)
-            output = container.logs(stdout=True, stderr=True).decode("utf-8", errors="replace")
-            parts = output.strip().split()
+            if exit_code != 0:
+                return None
+            parts = stdout.strip().split()
             if parts:
                 return parts[0]
         except Exception as e:
@@ -262,10 +242,13 @@ class DockerSandbox(AgentHarness):
         return None
 
     @staticmethod
-    def _take_state_snapshot(client: Any, paths: List[str]) -> Dict[str, str]:
+    def _take_state_snapshot(
+        runtime: ContainerRuntime, paths: List[str]
+    ) -> Dict[str, str]:
         snap: Dict[str, str] = {}
+        _hash = DockerSandbox._get_file_hash  # pyright: ignore[reportAttributeAccessIssue]
         for path in paths:
-            h = DockerSandbox._get_file_hash(client, path)  # type: ignore[reportAttributeAccessIssue]
+            h = _hash(runtime, path)
             if h:
                 snap[path] = h
         return snap
