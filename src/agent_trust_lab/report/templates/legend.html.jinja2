@@ -1,0 +1,64 @@
+<div class="legend-section" id="legend">
+  <div class="legend-header" onclick="document.getElementById('legend-body').classList.toggle('open')">
+    <span style="font-weight:600;font-size:14px;">{{ lang.legend_title }}</span>
+    <span style="font-size:12px;color:#a0aec0;">(click to expand)</span>
+  </div>
+  <div class="legend-body" id="legend-body">
+    <div class="legend-col">
+      <h4>{{ lang.legend_sec1_title }}</h4>
+      <div class="legend-item">{{ lang.legend_sec1a }}</div>
+      <div class="legend-item">{{ lang.legend_sec1b }}</div>
+      <div class="legend-item">{{ lang.legend_sec1c }}</div>
+    </div>
+    <div class="legend-col legend-col-wide">
+      <h4>{{ lang.legend_sec2_title }}</h4>
+      <div class="legend-item">{{ lang.legend_sec2a }}</div>
+      <div class="legend-item">{{ lang.legend_sec2b }}</div>
+      <div class="legend-item">{{ lang.legend_sec2c }}</div>
+      <div class="legend-item">{{ lang.legend_sec2d }}</div>
+      <div class="legend-item">{{ lang.legend_sec2e }}</div>
+    </div>
+    <div class="legend-col">
+      <h4>{{ lang.legend_sec3_title }}</h4>
+      <div class="legend-item">{{ lang.legend_sec3a }}</div>
+      <div class="legend-item" style="font-weight:600;">{{ lang.legend_sec3b }}</div>
+      <div class="legend-item">{{ lang.legend_sec3_dim1 }}</div>
+      <div class="legend-item">{{ lang.legend_sec3_dim2 }}</div>
+      <div class="legend-item">{{ lang.legend_sec3_dim3 }}</div>
+      <div class="legend-item">{{ lang.legend_sec3_dim4 }}</div>
+      <div class="legend-item">{{ lang.legend_sec3_dim5 }}</div>
+      <div class="legend-item">{{ lang.legend_sec3_dim6 }}</div>
+    </div>
+    <div class="legend-col">
+      <h4>{{ lang.legend_sec4_title }}</h4>
+      <div class="legend-item">{{ lang.legend_sec4a }}</div>
+      <div class="legend-item">{{ lang.legend_sec4b }}</div>
+      <div class="legend-item">{{ lang.legend_sec4c }}</div>
+      <div class="legend-item">{{ lang.legend_sec4d }}</div>
+      <div class="legend-item">{{ lang.legend_sec4e }}</div>
+    </div>
+    <div class="legend-col">
+      <h4>{{ lang.legend_sec5_title }}</h4>
+      <div class="legend-item">{{ lang.legend_sec5a }}</div>
+      <h4 style="margin-top:12px;">{{ lang.legend_sec6_title }}</h4>
+      <div class="legend-item">{{ lang.legend_sec6a }}</div>
+    </div>
+    <div class="legend-col legend-col-wide">
+      <h4>{{ lang.gsar_intro }}</h4>
+      <div class="legend-item"><span class="label label-grounded">Grounded</span> {{ lang.gsar_grounded }}</div>
+      <div class="legend-item"><span class="label label-ungrounded">Ungrounded</span> {{ lang.gsar_ungrounded }}</div>
+      <div class="legend-item"><span class="label label-contradicted">Contradicted</span> {{ lang.gsar_contradicted }}</div>
+      <div class="legend-item"><span class="label label-complementary">Complementary</span> {{ lang.gsar_complementary }}</div>
+      <h4 style="margin-top:12px;">{{ lang.scores_intro }}</h4>
+      <div class="legend-item">G {{ lang.score_g }}</div>
+      <div class="legend-item">U {{ lang.score_u }}</div>
+      <div class="legend-item">C {{ lang.score_c }}</div>
+      <div class="legend-item">F {{ lang.score_f }}</div>
+      {% if summary.has_calibration %}
+      <h4 style="margin-top:12px;">{{ lang.legend_sec7_title }}</h4>
+      <div class="legend-item">{{ lang.legend_sec7a }}</div>
+      <div class="legend-item">{{ lang.legend_sec7b }}</div>
+      {% endif %}
+    </div>
+  </div>
+</div>

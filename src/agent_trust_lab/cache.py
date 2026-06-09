@@ -1,6 +1,7 @@
 import hashlib
 import json
 import os
+import threading
 import time
 from typing import Any, Dict, List, Optional
 
@@ -9,41 +10,57 @@ from agent_trust_lab.log import get_logger
 
 logger = get_logger("cache")
 
-_CODE_FINGERPRINT: Optional[str] = None
+
+class CodeFingerprint:
+    """Thread-safe lazy SHA-256 fingerprint of source file metadata.
+
+    Replaces the module-level _CODE_FINGERPRINT global with an
+    encapsulated, thread-safe singleton.
+    """
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._fingerprint: Optional[str] = None
+
+    def get(self) -> str:
+        if self._fingerprint is not None:
+            return self._fingerprint
+        with self._lock:
+            if self._fingerprint is not None:
+                return self._fingerprint
+            self._fingerprint = self._compute()
+            return self._fingerprint
+
+    def _compute(self) -> str:
+        import agent_trust_lab
+
+        src_dir = agent_trust_lab.__path__[0]
+        if not os.path.isdir(src_dir):
+            return "unknown"
+
+        hasher = hashlib.sha256()
+        for root, _dirs, files in sorted(os.walk(src_dir)):
+            for fname in sorted(files):
+                if not fname.endswith(".py"):
+                    continue
+                fpath = os.path.join(root, fname)
+                try:
+                    stat = os.stat(fpath)
+                    entry = f"{fpath}:{stat.st_size}:{stat.st_mtime}"
+                    hasher.update(entry.encode("utf-8"))
+                except OSError:
+                    pass
+
+        return hasher.hexdigest()
+
+
+# Module-level singleton for backward-compatible access
+_code_fingerprint = CodeFingerprint()
 
 
 def _get_code_fingerprint() -> str:
-    """Lazily compute a SHA-256 fingerprint of source file metadata.
-
-    Uses (path, mtime, size) of all .py files under agent_trust_lab package
-    to detect code changes that should invalidate cache.
-    """
-    global _CODE_FINGERPRINT
-    if _CODE_FINGERPRINT is not None:
-        return _CODE_FINGERPRINT
-
-    import agent_trust_lab
-
-    src_dir = agent_trust_lab.__path__[0]
-    if not os.path.isdir(src_dir):
-        _CODE_FINGERPRINT = "unknown"
-        return _CODE_FINGERPRINT
-
-    hasher = hashlib.sha256()
-    for root, _dirs, files in sorted(os.walk(src_dir)):
-        for fname in sorted(files):
-            if not fname.endswith(".py"):
-                continue
-            fpath = os.path.join(root, fname)
-            try:
-                stat = os.stat(fpath)
-                entry = f"{fpath}:{stat.st_size}:{stat.st_mtime}"
-                hasher.update(entry.encode("utf-8"))
-            except OSError:
-                pass
-
-    _CODE_FINGERPRINT = hasher.hexdigest()
-    return _CODE_FINGERPRINT
+    """Backward-compat: delegate to CodeFingerprint singleton."""
+    return _code_fingerprint.get()
 
 
 def compute_cache_key(

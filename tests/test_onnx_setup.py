@@ -58,8 +58,8 @@ class TestExportConfig:
     def test_nli_config(self):
         config = _EXPORT_CONFIGS["nli"]
         assert config.name == "nli"
-        assert config.model_name == "roberta-base-mnli"
-        assert config.subdir == "roberta-base-mnli"
+        assert config.model_name == "microsoft/deberta-base-mnli"
+        assert config.subdir == "deberta-base-mnli"
         assert config.model_kwargs == {}
 
     def test_embed_config(self):
@@ -93,7 +93,7 @@ class TestCheckModelsAvailable:
     def test_partial_availability(self, tmp_path, monkeypatch):
         cache = str(tmp_path / "onnx")
         monkeypatch.setattr("agent_trust_lab.onnx_setup.DEFAULT_CACHE", cache)
-        nli_dir = os.path.join(cache, "roberta-base-mnli")
+        nli_dir = os.path.join(cache, "deberta-base-mnli")
         os.makedirs(nli_dir, exist_ok=True)
         Path(os.path.join(nli_dir, "model.onnx")).touch()
         status = check_models_available()

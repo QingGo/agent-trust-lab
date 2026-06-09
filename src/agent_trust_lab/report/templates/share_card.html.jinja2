@@ -1,0 +1,89 @@
+<div class="share-card">
+  <div class="share-card-brand">
+    <div>
+      <h2>{{ lang.share_card_brand }}</h2>
+      <div class="brand-sub">{{ lang.share_card_subtitle }}</div>
+    </div>
+    <div style="text-align:right;">
+      <div style="font-size:11px;color:#8b94b8;">{{ models|length }} {{ lang.share_card_models }}</div>
+      <div style="font-size:11px;color:#8b94b8;">{{ total_traps }} {{ lang.share_card_traps }}</div>
+    </div>
+  </div>
+  <div class="share-card-body">
+    {% if context_line %}
+    <div class="share-card-context">{{ context_line }}</div>
+    {% endif %}
+    <div class="share-card-bars">
+      {% for bar in bars %}
+      <div class="share-bar">
+        <div class="bar-label" title="{{ bar.config_label }}">{{ bar.config_label }}</div>
+        <div class="bar-main">
+          <div class="bar-track">
+            <div class="bar-seg bar-g" style="width:{{ bar.g_pct }}%"></div>
+            <div class="bar-seg bar-f" style="width:{{ bar.f_pct }}%"></div>
+            <div class="bar-seg bar-iu" style="width:{{ bar.iu_pct }}%"></div>
+            <div class="bar-seg bar-ic" style="width:{{ bar.ic_pct }}%"></div>
+          </div>
+          <div class="bar-breakdown">
+            <span class="bd-g">G:{{ "%.2f"|format(bar.g_val) }}</span>
+            <span class="bd-f">F:{{ "%.2f"|format(bar.f_val) }}</span>
+            <span class="bd-u">U:{{ "%.2f"|format(bar.u_val) }}</span>
+            <span class="bd-c">C:{{ "%.2f"|format(bar.c_val) }}</span>
+          </div>
+        </div>
+        <div class="bar-score">
+          <span class="bar-value">{{ "%.2f"|format(bar.trust_score) }}</span>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    <div class="share-card-legend">
+      <span class="legend-swatch legend-g">■ {{ lang.share_card_legend_g }}</span>
+      <span class="legend-swatch legend-f">■ {{ lang.share_card_legend_f }}</span>
+      <span class="legend-swatch legend-iu">■ {{ lang.share_card_legend_iu }}</span>
+      <span class="legend-swatch legend-ic">■ {{ lang.share_card_legend_ic }}</span>
+    </div>
+    <div class="share-card-metrics-toggle" onclick="this.nextElementSibling.classList.toggle('open')">
+      <span class="metrics-toggle-icon">+</span> {{ lang.share_card_metrics_toggle }}
+    </div>
+    <div class="share-card-metrics-guide">
+      <div class="metrics-row">
+        <span class="metrics-swatch metrics-swatch-g">■</span>
+        <div><span class="metrics-name">{{ lang.share_card_legend_g }}</span> — {{ lang.share_card_metrics_desc_g }}<div class="metrics-ex">{{ lang.share_card_metrics_ex_g }}</div></div>
+      </div>
+      <div class="metrics-row">
+        <span class="metrics-swatch metrics-swatch-f">■</span>
+        <div><span class="metrics-name">{{ lang.share_card_legend_f }}</span> — {{ lang.share_card_metrics_desc_f }}<div class="metrics-ex">{{ lang.share_card_metrics_ex_f }}</div></div>
+      </div>
+      <div class="metrics-row">
+        <span class="metrics-swatch metrics-swatch-iu">■</span>
+        <div><span class="metrics-name">{{ lang.share_card_legend_iu }}</span> — {{ lang.share_card_metrics_desc_iu }}<div class="metrics-ex">{{ lang.share_card_metrics_ex_iu }}</div></div>
+      </div>
+      <div class="metrics-row">
+        <span class="metrics-swatch metrics-swatch-ic">■</span>
+        <div><span class="metrics-name">{{ lang.share_card_legend_ic }}</span> — {{ lang.share_card_metrics_desc_ic }}<div class="metrics-ex">{{ lang.share_card_metrics_ex_ic }}</div></div>
+      </div>
+    </div>
+    <div class="share-card-metrics-toggle" onclick="this.nextElementSibling.classList.toggle('open')">
+      <span class="metrics-toggle-icon">+</span> {{ lang.share_card_how_tested_title }}
+    </div>
+    <div class="share-card-metrics-guide">
+      <p style="font-size:12px;color:#4a5568;line-height:1.5;">{{ lang.share_card_how_tested_body }}</p>
+    </div>
+    {% if insight_text %}
+    <div class="share-card-insight">
+      <span class="insight-icon">&#128161;</span>
+      <strong>{{ lang.share_card_insight_label }}:</strong> {{ insight_text }}
+    </div>
+    {% endif %}
+  </div>
+  <div class="share-card-divider">{{ lang.share_card_divider }}</div>
+  <div class="share-card-footer">
+    <span>{{ generated_at }}</span>
+    {% if report_url %}
+    <a class="share-cta" href="{{ report_url }}">{{ lang.share_card_full_report }} &#8599;</a>
+    {% else %}
+    <span class="share-cta-text">{{ lang.share_card_full_report }}</span>
+    {% endif %}
+  </div>
+</div>

@@ -2,6 +2,7 @@ from typing import Any, Dict, List
 
 from pydantic import BaseModel, Field
 
+from agent_trust_lab.config import DEFAULT_MODEL
 from agent_trust_lab.log import get_logger
 
 logger = get_logger("hallukg.extractor")
@@ -25,8 +26,8 @@ class TripleExtractor:
     Falls back to stub on any API error.
     """
 
-    def __init__(self, model: str = "", model_name: str = "", strict_mode: bool = False):
-        self.model = model or model_name or "gpt-4o-mini"
+    def __init__(self, model: str = "", strict_mode: bool = False):
+        self.model = model or DEFAULT_MODEL
         self.strict_mode = strict_mode
 
     def extract(self, text: str) -> List[Dict[str, Any]]:
@@ -88,11 +89,6 @@ class TripleExtractor:
         return [t.model_dump() for t in result.triples]
 
     def _extract_stub(self, text: str) -> List[Dict[str, Any]]:
-        return [
-            {
-                "subject": "agent",
-                "predicate": "generated_output",
-                "object": text[:80].strip().replace("\n", " "),
-                "confidence": 0.85,
-            }
-        ]
+        """Return empty list on LLM failure — no fake triples."""
+        logger.warning("TripleExtractor using stub: returning empty triples list for text[%d]", len(text))
+        return []

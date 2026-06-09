@@ -75,14 +75,19 @@ class EmbeddingEngine:
             return None
 
 
+import threading
+
 _embedding_engine: Optional[EmbeddingEngine] = None
+_engine_lock = threading.Lock()
 
 
 def _get_embedding_engine() -> EmbeddingEngine:
-    """Return module-level singleton EmbeddingEngine (ONNX model loaded once)."""
+    """Thread-safe lazy singleton — returns shared EmbeddingEngine instance."""
     global _embedding_engine
     if _embedding_engine is None:
-        _embedding_engine = EmbeddingEngine()
+        with _engine_lock:
+            if _embedding_engine is None:
+                _embedding_engine = EmbeddingEngine()
     return _embedding_engine
 
 

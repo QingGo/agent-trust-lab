@@ -39,6 +39,7 @@ class TrustLab:
         skip_hallukg: bool = False,
         timeout: int = 120,
         calibration_profile: Optional[str] = None,
+        strict_mode: bool = True,
     ):
         self.config = EvaluationConfig(
             model=model,
@@ -54,6 +55,7 @@ class TrustLab:
             skip_hallukg=skip_hallukg,
             timeout=timeout,
             calibration_profile=calibration_profile,
+            strict_mode=strict_mode,
         )
         self._orchestrator: Optional[Orchestrator] = None
 
@@ -199,6 +201,7 @@ class CodeLab(TrustLab):
         skip_hallukg: bool = False,
         timeout: int = 120,
         calibration_profile: Optional[str] = None,
+        strict_mode: bool = True,
     ):
         super().__init__(
             model=model,
@@ -214,6 +217,7 @@ class CodeLab(TrustLab):
             skip_hallukg=skip_hallukg,
             timeout=timeout,
             calibration_profile=calibration_profile,
+            strict_mode=strict_mode,
         )
         self.config.codebase_path = codebase_path
 

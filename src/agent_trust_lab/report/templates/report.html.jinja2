@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="{{ lang_code }}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agent Trust Lab — {{ lang.title }}</title>
+<style>{{ css }}</style>
+</head>
+<body>
+<div class="container">
+
+{{ share_card_html }}
+
+<div class="header">
+  {{ lang_switch_html }}
+  <h1>{{ lang.title }}</h1>
+  <div class="meta">
+    {% if configs %}
+    {% for c in configs %}
+    {{ c.model }}{% if c.thinking_enabled %} (think {{ c.reasoning_effort }}){% endif %}{% if not loop.last %} &nbsp;|&nbsp; {% endif %}
+    {% endfor %}
+    {% else %}
+    Model: {{ config.model }} &nbsp;|&nbsp; Agent: {{ config.agent_type }} &nbsp;|&nbsp; Sandbox: {{ config.sandbox }}
+    {% endif %}
+    <br>Generated: {{ generated_at }}
+    {% if summary.has_calibration %}
+    <br>Calibrated: {{ summary.calibration_profile_id }} (&kappa; = {{ "%.3f"|format(summary.calibration_kappa) }})
+    {% endif %}
+  </div>
+</div>
+
+{{ legend_html }}
+
+{% if summary.benign_refusal_warning %}
+<div class="benign-warning">{{ lang.benign_warning }}</div>
+{% endif %}
+
+{% if summary.is_multi_model %}
+<div class="comparison-dashboard">
+  <h3>{{ lang.comparison_title }}</h3>
+  <table>
+    <tr>
+      <th>Model</th><th>Config</th><th>{{ lang.traps_evaluated }}</th><th>Pass%</th>
+      <th>G</th><th>U</th><th>C</th><th>F</th>
+    </tr>
+    {% for m in summary.models %}
+    <tr>
+      <td style="font-weight:600;">{{ m.model }}</td>
+      <td style="font-size:11px;color:#718096;">{{ m.config_label }}</td>
+      <td>{{ m.total }}</td>
+      <td style="{% if m.pass_pct == summary.best_pass and m.pass_pct != summary.worst_pass %}color:#38a169;font-weight:700{% elif m.pass_pct == summary.worst_pass and m.pass_pct != summary.best_pass %}color:#e53e3e;font-weight:700{% endif %}">{{ "%.1f"|format(m.pass_pct) }}%</td>
+      <td style="{% if m.avg_g == summary.best_g and m.avg_g != summary.worst_g %}color:#38a169;font-weight:700{% elif m.avg_g == summary.worst_g and m.avg_g != summary.best_g %}color:#e53e3e;font-weight:700{% endif %}">{{ "%.2f"|format(m.avg_g) }}</td>
+      <td style="{% if m.avg_u == summary.best_u and m.avg_u != summary.worst_u %}color:#38a169;font-weight:700{% elif m.avg_u == summary.worst_u and m.avg_u != summary.best_u %}color:#e53e3e;font-weight:700{% endif %}">{{ "%.2f"|format(m.avg_u) }}</td>
+      <td style="{% if m.avg_c == summary.best_c and m.avg_c != summary.worst_c %}color:#38a169;font-weight:700{% elif m.avg_c == summary.worst_c and m.avg_c != summary.best_c %}color:#e53e3e;font-weight:700{% endif %}">{{ "%.2f"|format(m.avg_c) }}</td>
+      <td style="{% if m.avg_f == summary.best_f and m.avg_f != summary.worst_f %}color:#38a169;font-weight:700{% elif m.avg_f == summary.worst_f and m.avg_f != summary.best_f %}color:#e53e3e;font-weight:700{% endif %}">{{ "%.2f"|format(m.avg_f) }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+</div>
+{% endif %}
+
+<div class="summary">
+  <div class="card">
+    <h3>{{ lang.traps_evaluated }}</h3>
+    <div class="value">{{ summary.total_traps }}</div>
+    <div class="sub">{{ summary.mutated_count }} {{ lang.mutated_count }}</div>
+  </div>
+  <div class="card">
+    <h3>{{ lang.compliance_header }}</h3>
+    <div class="value">
+      <span class="status-pass">{{ summary.compliance_pass }}</span>
+      <span style="font-size:18px;color:#a0aec0;"> / </span>
+      <span class="status-warn">{{ summary.compliance_warn }}</span>
+      <span style="font-size:18px;color:#a0aec0;"> / </span>
+      <span class="status-fail">{{ summary.compliance_fail }}</span>
+    </div>
+    <div class="sub">{{ lang.compliance_sub }}</div>
+  </div>
+  <div class="card">
+    <h3>{{ lang.avg_g_score }}</h3>
+    <div class="value">{{ "%.2f"|format(summary.avg_g_score) }}</div>
+    <div class="sub">{{ lang.avg_g_sub }}</div>
+  </div>
+  <div class="card">
+    <h3>{{ lang.avg_faithfulness }}</h3>
+    <div class="value">{{ "%.2f"|format(summary.avg_faithfulness) }}</div>
+    <div class="sub">{{ lang.avg_faith_sub }}</div>
+  </div>
+</div>
+
+{% for trap in traps %}
+<div class="trap-section">
+  <div class="trap-header" onclick="toggleBody(this)">
+    <span class="trap-id">{{ trap.trap_id }}</span>
+    <div class="trap-meta">
+      <span class="badge badge-severity-{{ trap.severity }}">{{ trap.severity }}</span>
+      <span class="badge badge-category">{{ trap.category }}</span>
+      <span style="font-size:12px;color:#a0aec0;">{{ trap.trap_type }}</span>
+      {% if trap.mutated %}<span class="badge badge-mutated" title="{{ lang.mutated_tooltip }}">&#x2699; {{ lang.mutated_label }}</span>{% endif %}
+    </div>
+  </div>
+  <div class="trap-body">
+    {% if trap.difficulty %}
+    <p style="font-size:13px;color:#718096;margin-bottom:8px;">
+      Difficulty: {{ trap.difficulty }} &nbsp;|&nbsp; Steps: {{ trap.steps_count }}
+    </p>
+    {% endif %}
+
+    {% if trap.trap_context %}
+    <div class="trap-context">
+      <h4>{{ lang.trap_context }}</h4>
+      {% if trap.trap_context.base_task %}
+      <div class="ctx-item"><span class="ctx-label">{{ lang.trap_purpose }}:</span> <span class="ctx-val">{{ trap.trap_context.base_task }}</span></div>
+      {% endif %}
+      {% if trap.trap_context.trap_injection %}
+      <div class="ctx-item"><span class="ctx-label">{{ lang.trap_injection }}:</span> <span class="ctx-val">{{ trap.trap_context.trap_injection }}</span></div>
+      {% endif %}
+      {% if trap.trap_context.knowledge_source %}
+      <div class="ctx-item"><span class="ctx-label">{{ lang.trap_knowledge }}:</span> <span class="ctx-val">{{ trap.trap_context.knowledge_source }}</span></div>
+      {% endif %}
+    </div>
+    {% endif %}
+
+    {% if trap.models %}
+    <div class="detail-section">
+      <h4>{{ lang.model_scores_title }}</h4>
+      <table>
+        <tr><th>Model</th><th>Pass</th><th>{{ lang.table_g }}</th><th>{{ lang.table_u }}</th><th>{{ lang.table_c }}</th><th>{{ lang.table_f }}</th><th>Steps</th></tr>
+        {% for m in trap.models %}
+        <tr>
+          <td style="font-weight:600;font-size:12px;">{{ m.label }}</td>
+          <td>{{ m.compliance.overall if m.compliance else "-" }}</td>
+          <td>{{ "%.2f"|format(m.avg_g) }}</td>
+          <td>{{ "%.2f"|format(m.avg_u) }}</td>
+          <td>{{ "%.2f"|format(m.avg_c) }}</td>
+          <td>{{ "%.2f"|format(m.avg_f) }}</td>
+          <td>{{ m.steps_count }}</td>
+        </tr>
+        {% endfor %}
+      </table>
+    </div>
+    {% endif %}
+
+    {% if trap.models %}
+    {% for m in trap.models %}
+    {% if m.hallu_steps %}
+    <div class="detail-section model-detail">
+      <h4 onclick="document.getElementById('md-body-{{ trap.trap_id }}-{{ loop.index }}').classList.toggle('open')" style="cursor:pointer;">
+        ▸ {{ m.label }} — {{ lang.hallu_title.replace('{n}', m.hallu_steps|length|string) }}
+      </h4>
+      <div class="model-detail-body" id="md-body-{{ trap.trap_id }}-{{ loop.index }}">
+      <table>
+        <tr><th>{{ lang.table_step }}</th><th>{{ lang.table_type }}</th><th>{{ lang.table_content }}</th><th>{{ lang.table_label }}</th><th>{{ lang.table_g }}</th><th>{{ lang.table_u }}</th><th>{{ lang.table_c }}</th><th>{{ lang.table_f }}</th></tr>
+        {% for step in m.hallu_steps %}
+        <tr class="{% if step.gsar_label|lower == 'ungrounded' %}row-ungrounded{% elif step.gsar_label|lower == 'contradicted' %}row-contradicted{% endif %}">
+          <td>{{ step.step_index }}</td>
+          <td style="font-size:11px;color:#718096;">{{ step.step_type }}</td>
+          <td><div class="step-content" title="{{ step.step_content|default('')|e }}">{{ step.step_content|default('')|truncate(80) }}</div></td>
+          <td><span class="label label-{{ step.gsar_label|lower }}">{{ step.gsar_label }}</span></td>
+          <td>{{ "%.2f"|format(step.g_score) }}</td>
+          <td>{{ "%.2f"|format(step.u_score) }}</td>
+          <td>{{ "%.2f"|format(step.c_score) }}</td>
+          <td>{{ "%.2f"|format(step.faithfulness_score) }}</td>
+        </tr>
+        {% if step.evidence or step.explanation %}
+        <tr style="font-size:11px;background:#f7fafc;"><td colspan="8">{% if step.evidence %}<strong>{{ lang.table_evidence }}:</strong> {{ step.evidence|join('; ') }}{% endif %}{% if step.evidence and step.explanation %} | {% endif %}{% if step.explanation %}<strong>{{ lang.table_explanation }}:</strong> {{ step.explanation }}{% endif %}</td></tr>
+        {% endif %}
+        {% endfor %}
+      </table>
+      </div>
+    </div>
+    {% endif %}
+    {% endfor %}
+    {% endif %}
+
+    {% if trap.error %}
+    <div class="detail-section">
+      <h4>Error</h4>
+      <p class="status-fail" style="font-size:13px;">{{ trap.error }}</p>
+    </div>
+    {% endif %}
+
+    {% if trap.compliance %}
+    <div class="detail-section">
+      <h4>{{ lang.compliance_title }}</h4>
+      <table>
+        <tr><th>Dimension</th><th>Status</th></tr>
+        {% for dim, status in trap.compliance.dimensions.items() %}
+        <tr>
+          <td>{{ dim }}</td>
+          <td class="dim-{{ status }}">{{ status.upper() }}</td>
+        </tr>
+        {% endfor %}
+      </table>
+      <p style="font-size:12px;color:#718096;margin-top:8px;">
+        {{ lang.critical }}: {{ trap.compliance.critical_count }} &nbsp;|&nbsp;
+        {{ lang.high }}: {{ trap.compliance.high_count }}
+      </p>
+    </div>
+    {% endif %}
+
+    {% if trap.hallucination %}
+    <div class="detail-section">
+      <h4>{{ lang.hallu_title.replace('{n}', trap.hallucination.step_count|string) }}
+        {% if trap.hallucination.has_calibrated %}
+        <span style="font-size:11px;color:#718096;"> — {{ lang.calibrated_label }}</span>
+        {% endif %}
+      </h4>
+      <table>
+        <tr>
+          <th>{{ lang.table_step }}</th>
+          <th>{{ lang.table_type }}</th>
+          <th>{{ lang.table_content }}</th>
+          <th>{{ lang.table_label }}</th>
+          <th>{{ lang.table_g }}</th>
+          {% if trap.hallucination.has_calibrated %}<th>G (cal)</th>{% endif %}
+          <th>{{ lang.table_u }}</th>
+          <th>{{ lang.table_c }}</th>
+          <th>{{ lang.table_f }}</th>
+          {% if trap.hallucination.has_calibrated %}<th>F (cal)</th>{% endif %}
+        </tr>
+        {% for step in trap.hallucination.steps %}
+        <tr class="{% if step.gsar_label|lower == 'ungrounded' %}row-ungrounded{% elif step.gsar_label|lower == 'contradicted' %}row-contradicted{% endif %}">
+          <td>{{ step.step_index }}</td>
+          <td style="font-size:11px;color:#718096;">{{ step.step_type }}</td>
+          <td><div class="step-content" title="{{ step.step_content|default('')|e }}">{{ step.step_content|default('')|truncate(80) }}</div></td>
+          <td><span class="label label-{{ step.gsar_label|lower }}">{{ step.gsar_label }}</span></td>
+          <td>
+            <span class="score-bar"><span class="score-fill" style="width:{{ (step.g_score * 100)|int }}%;background:#38a169;"></span></span>
+            {{ "%.2f"|format(step.g_score) }}
+          </td>
+          {% if trap.hallucination.has_calibrated %}
+          <td style="color:#2b6cb0;font-weight:600;">{{ "%.2f"|format(step.calibrated_g_score|default(0)) }}</td>
+          {% endif %}
+          <td>{{ "%.2f"|format(step.u_score) }}</td>
+          <td>{{ "%.2f"|format(step.c_score) }}</td>
+          <td>{{ "%.2f"|format(step.faithfulness_score) }}</td>
+          {% if trap.hallucination.has_calibrated %}
+          <td style="color:#2b6cb0;font-weight:600;">{{ "%.2f"|format(step.calibrated_faithfulness_score|default(0)) }}</td>
+          {% endif %}
+        </tr>
+        {% if step.evidence or step.explanation %}
+        <tr style="font-size:11px;background:#f7fafc;">
+          <td colspan="{% if trap.hallucination.has_calibrated %}9{% else %}9{% endif %}">
+            {% if step.evidence %}<strong>{{ lang.table_evidence }}:</strong> {{ step.evidence|join('; ') }}{% endif %}
+            {% if step.evidence and step.explanation %} | {% endif %}
+            {% if step.explanation %}<strong>{{ lang.table_explanation }}:</strong> {{ step.explanation }}{% endif %}
+          </td>
+        </tr>
+        {% endif %}
+        {% endfor %}
+      </table>
+      {% if trap.hallucination.has_calibrated %}
+      <p style="font-size:11px;color:#718096;margin-top:4px;">
+        G: {{ "%.2f"|format(trap.hallucination.calibrated_avg_g) }} &nbsp;|&nbsp;
+        F: {{ "%.2f"|format(trap.hallucination.calibrated_avg_faithfulness) }}
+      </p>
+      {% endif %}
+    </div>
+    {% endif %}
+
+    {% if trap.code_hallu %}
+    <div class="detail-section">
+      <h4>{{ lang.code_hallu_title.replace('{n}', trap.code_hallu.count|string) }}</h4>
+      <table>
+        <tr><th>#</th><th>Type</th><th>Snippet</th><th>Error</th><th>Fix</th></tr>
+        {% for check in trap.code_hallu.checks %}
+        <tr>
+          <td>{{ check.step_index }}</td>
+          <td>{{ check.hallucination_type }}</td>
+          <td style="font-family:monospace;font-size:11px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ check.code_snippet }}</td>
+          <td style="font-size:12px;max-width:200px;">{{ check.error_message }}</td>
+          <td style="font-size:12px;">{{ check.fix_suggestion }}</td>
+        </tr>
+        {% endfor %}
+      </table>
+    </div>
+    {% endif %}
+
+    {% if trap.security_events %}
+    <div class="detail-section">
+      <h4>{{ lang.security_events_title.replace('{n}', trap.security_events|string) }}</h4>
+    </div>
+    {% endif %}
+
+    {% if trap.remediation %}
+    <div class="detail-section" style="background:#f0fdf4;border-radius:8px;padding:16px;">
+      <h4>{{ lang.remediation_title }}</h4>
+      <table>
+        <tr><th style="width:80px;">{{ lang.remediation_problem }}</th><td>{{ trap.remediation.problem }}</td></tr>
+        <tr><th>{{ lang.remediation_cause }}</th><td>{{ trap.remediation.cause }}</td></tr>
+        <tr><th>{{ lang.remediation_fix }}</th><td style="color:#38a169;font-weight:600;">{{ trap.remediation.fix }}</td></tr>
+      </table>
+    </div>
+    {% endif %}
+
+  </div>
+</div>
+{% endfor %}
+
+<div class="footer">
+  {{ lang.footer }} — {{ generated_at }}
+</div>
+
+</div>
+
+<script>
+function toggleBody(header) {
+  var body = header.nextElementSibling;
+  body.classList.toggle("open");
+}
+</script>
+
+</body>
+</html>

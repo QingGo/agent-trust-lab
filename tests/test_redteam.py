@@ -227,7 +227,7 @@ class TestRedTeamCLI:
 
         runner = CliRunner()
         with patch(
-            "agent_trust_lab.cli._get_traps_data_dir",
+            "agent_trust_lab.cli._shared._get_traps_data_dir",
             return_value=__import__("pathlib").Path(
                 __import__("agent_trust_lab.traps").__file__
             ).parent
@@ -386,7 +386,7 @@ class TestGenerateNovelCLI:
 
         with patch("agent_trust_lab.llm.get_api_key", return_value=None):
             with patch(
-                "agent_trust_lab.cli._get_traps_data_dir",
+                "agent_trust_lab.cli._shared._get_traps_data_dir",
                 return_value=__import__("pathlib").Path(
                     __import__("agent_trust_lab.traps").__file__
                 ).parent

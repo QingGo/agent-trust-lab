@@ -30,7 +30,7 @@ class TestTrustLab:
         assert lab.config.calibration_profile == "my-profile"
 
     def test_run_traps(self, sample_traps_dir):
-        lab = TrustLab(trap_library_path=sample_traps_dir)
+        lab = TrustLab(trap_library_path=sample_traps_dir, strict_mode=False)
         with (
             patch("agent_trust_lab.llm.get_api_key", return_value=None),
             patch("agent_trust_lab.sandbox.image.get_docker_client", return_value=None),
@@ -40,7 +40,7 @@ class TestTrustLab:
             assert results[0].trap_id == "test_trap_01"
 
     def test_run_by_category(self, sample_traps_dir):
-        lab = TrustLab(trap_library_path=sample_traps_dir)
+        lab = TrustLab(trap_library_path=sample_traps_dir, strict_mode=False)
         with (
             patch("agent_trust_lab.llm.get_api_key", return_value=None),
             patch("agent_trust_lab.sandbox.image.get_docker_client", return_value=None),
@@ -55,7 +55,7 @@ class TestTrustLab:
         assert "trap_id" in traps[0]
 
     def test_export_results(self, sample_traps_dir):
-        lab = TrustLab(trap_library_path=sample_traps_dir)
+        lab = TrustLab(trap_library_path=sample_traps_dir, strict_mode=False)
         with tempfile.NamedTemporaryFile(suffix=".json", delete=False) as f:
             output_path = f.name
         try:
@@ -106,7 +106,7 @@ class TestCodeLab:
         assert lab.config.codebase_path == "/path/to/project"
 
     def test_run_code_sets_category(self, sample_traps_dir):
-        lab = CodeLab(trap_library_path=sample_traps_dir)
+        lab = CodeLab(trap_library_path=sample_traps_dir, strict_mode=False)
         with (
             patch("agent_trust_lab.llm.get_api_key", return_value=None),
             patch("agent_trust_lab.sandbox.image.get_docker_client", return_value=None),

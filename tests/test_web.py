@@ -5,13 +5,13 @@ class TestWebUIBasics:
     def test_create_ui_returns_blocks(self):
         from gradio import Blocks
 
-        from agent_trust_lab.web.ui import create_ui
+        from agent_trust_lab.web import create_ui
 
         demo = create_ui()
         assert isinstance(demo, Blocks)
 
     def test_get_trap_info_valid(self):
-        from agent_trust_lab.web.ui import _get_trap_info
+        from agent_trust_lab.web._shared import _get_trap_info
 
         info = _get_trap_info("parameter_hallucination_01")
         assert info is not None
@@ -21,13 +21,13 @@ class TestWebUIBasics:
         assert "tools" in info
 
     def test_get_trap_info_missing(self):
-        from agent_trust_lab.web.ui import _get_trap_info
+        from agent_trust_lab.web._shared import _get_trap_info
 
         info = _get_trap_info("nonexistent_trap_999")
         assert info is None
 
     def test_build_trap_choices_has_categories(self):
-        from agent_trust_lab.web.ui import _build_trap_choices
+        from agent_trust_lab.web._shared import _build_trap_choices
 
         choices = _build_trap_choices()
         assert isinstance(choices, dict)
@@ -36,7 +36,7 @@ class TestWebUIBasics:
         assert "code_agent" in choices
 
     def test_run_evaluation_returns_dict(self):
-        from agent_trust_lab.web.ui import _run_evaluation
+        from agent_trust_lab.web._shared import _run_evaluation
 
         with patch("agent_trust_lab.llm.get_api_key", return_value=None):
             result = _run_evaluation(
@@ -53,7 +53,7 @@ class TestWebUIBasics:
         assert "steps_count" in result
 
     def test_run_evaluation_with_thinking(self):
-        from agent_trust_lab.web.ui import _run_evaluation
+        from agent_trust_lab.web._shared import _run_evaluation
 
         with patch("agent_trust_lab.llm.get_api_key", return_value=None):
             result = _run_evaluation(
@@ -86,7 +86,7 @@ class TestWebCLI:
         from agent_trust_lab.cli import app
 
         runner = CliRunner()
-        with patch("agent_trust_lab.web.ui.launch_ui") as mock_launch:
+        with patch("agent_trust_lab.web.launch_ui") as mock_launch:
             result = runner.invoke(app, ["serve", "--host", "0.0.0.0", "--port", "8080"])
         assert result.exit_code == 0
         mock_launch.assert_called_once_with(

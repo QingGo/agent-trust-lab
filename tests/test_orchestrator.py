@@ -232,6 +232,7 @@ class TestOrchestrator:
                 "Ungrounded",
                 "Contradicted",
                 "Complementary",
+                "Unknown",
             )
 
     def test_result_summary_hallucination_steps_labels_match(self, config):

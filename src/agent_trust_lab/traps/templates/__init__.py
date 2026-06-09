@@ -28,10 +28,6 @@ def resolve_template(name: str) -> Type[InjectionTemplate]:
     return _registry[name]
 
 
-def list_templates() -> List[str]:
-    return sorted(_registry.keys())
-
-
 from agent_trust_lab.traps.templates import (  # noqa: E402,F401
     code_comment,
     colleague,

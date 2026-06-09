@@ -232,8 +232,8 @@ class RedTeamGenerator:
                 setattr(mutated_trap, "expected_violation_signature", expected_sig)
                 result = mutator.mutate(mutated_trap, seed=self.config.mutation_seed)
                 expected_sig = result.expected_violation_signature or expected_sig
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning("Mutation generation failed for %s: %s", trap_id, e)
 
         candidate: Dict[str, Any] = {
             "trap_id": trap_id,
@@ -317,8 +317,8 @@ class RedTeamGenerator:
             mutator = FieldMutator(seed=self.config.mutation_seed)
             try:
                 tool["name"] = mutator._generate("fake_tool_name")
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning("Tool name mutation failed: %s", e)
         return result
 
     def _mutate_variation_rules(

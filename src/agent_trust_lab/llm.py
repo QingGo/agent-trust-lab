@@ -20,47 +20,53 @@ logger = get_logger("llm")
 _T = TypeVar("_T")
 _RETRYABLE_ERRORS = (APIError, APIConnectionError, APITimeoutError, RateLimitError)
 
-_token_lock = threading.Lock()
-_token_usage: Dict[str, int] = {}
-_token_details: Dict[str, Dict[str, int]] = {}
+
+class TokenTracker:
+    """Thread-safe token usage tracker.
+
+    Encapsulates global mutable state (previously module-level dicts)
+    into an injectable object. A module-level instance provides
+    backward-compatible free functions.
+    """
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._usage: Dict[str, int] = {}
+        self._details: Dict[str, Dict[str, int]] = {}
+
+    def track(self, model: str, prompt_tokens: int, completion_tokens: int) -> None:
+        with self._lock:
+            if model not in self._usage:
+                self._usage[model] = 0
+                self._details[model] = {"prompt_tokens": 0, "completion_tokens": 0}
+            self._usage[model] += prompt_tokens + completion_tokens
+            self._details[model]["prompt_tokens"] += prompt_tokens
+            self._details[model]["completion_tokens"] += completion_tokens
+
+    def get_usage(self) -> Dict[str, Dict[str, int]]:
+        with self._lock:
+            return {k: dict(v) for k, v in self._details.items()}
+
+    def reset(self) -> None:
+        with self._lock:
+            self._usage.clear()
+            self._details.clear()
+
+    def capture(self, response: ChatCompletion, model: str = "") -> None:
+        if response.usage:
+            self.track(
+                model or response.model,
+                response.usage.prompt_tokens,
+                response.usage.completion_tokens,
+            )
 
 
-@dataclass
-class TokenUsage:
-    model: str
-    prompt_tokens: int
-    completion_tokens: int
-    total_tokens: int
-
-
-def track_tokens(model: str, prompt_tokens: int, completion_tokens: int) -> None:
-    with _token_lock:
-        if model not in _token_usage:
-            _token_usage[model] = 0
-            _token_details[model] = {"prompt_tokens": 0, "completion_tokens": 0}
-        _token_usage[model] += prompt_tokens + completion_tokens
-        _token_details[model]["prompt_tokens"] += prompt_tokens
-        _token_details[model]["completion_tokens"] += completion_tokens
-
-
-def get_token_usage() -> Dict[str, Dict[str, int]]:
-    with _token_lock:
-        return {k: dict(v) for k, v in _token_details.items()}
-
-
-def reset_token_usage() -> None:
-    with _token_lock:
-        _token_usage.clear()
-        _token_details.clear()
-
-
-def capture_usage(response: ChatCompletion, model: str = "") -> None:
-    if response.usage:
-        track_tokens(
-            model or response.model,
-            response.usage.prompt_tokens,
-            response.usage.completion_tokens,
-        )
+# Module-level instance for backward-compatible free functions
+_token_tracker = TokenTracker()
+track_tokens = _token_tracker.track
+get_token_usage = _token_tracker.get_usage
+reset_token_usage = _token_tracker.reset
+capture_usage = _token_tracker.capture
 
 
 def get_api_key(api_key: str = "", model: str = "") -> Optional[str]:

@@ -155,7 +155,7 @@ def _run_single_eval(
                         safe_label, len(existing),
                     )
                     return safe_label, [], json_path
-        except Exception:
+        except (json.JSONDecodeError, OSError) as e:
             pass
 
     config_kwargs: Dict[str, Any] = dict(

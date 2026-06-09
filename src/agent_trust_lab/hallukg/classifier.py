@@ -205,7 +205,10 @@ class GSARClassifier:
                         )
                     try:
                         return clf._classify_stub(steps)
-                    except Exception:
+                    except Exception as e:
+                        logger.warning(
+                            "Stub classification failed for model %s: %s", model, e
+                        )
                         return None
 
                 future = executor.submit(_run_classify)
@@ -345,26 +348,24 @@ class GSARClassifier:
         return reports
 
     def _classify_stub(self, steps: list) -> List[HalluStepReport]:
+        """Return Unknown label stub when LLM classification fails.
+
+        Each step is labelled 'Unknown' with neutral scores (0.5) to indicate
+        the classification did not actually run. This is distinguishable from
+        real classifications and does not contaminate aggregate metrics.
+        """
         reports: List[HalluStepReport] = []
-        gsar_labels = ["Grounded", "Grounded", "Complementary", "Ungrounded", "Contradicted"]
-
         for i, step in enumerate(steps):
-            label = gsar_labels[i % len(gsar_labels)]
-            g_score = 0.7 if label == "Grounded" else 0.3
-            u_score = 0.1 if label != "Ungrounded" else 0.8
-            c_score = 0.2 if label != "Contradicted" else 0.9
-
             reports.append(
                 HalluStepReport(
                     step_index=i,
-                    gsar_label=label,
-                    g_score=g_score,
-                    u_score=u_score,
-                    c_score=c_score,
-                    faithfulness_score=0.95,
-                    evidence=["Mock triples anchoring evidence"],
-                    explanation=f"Step {i}: Classified as {label} (stub)",
+                    gsar_label="Unknown",
+                    g_score=0.5,
+                    u_score=0.0,
+                    c_score=0.0,
+                    faithfulness_score=0.5,
+                    evidence=[],
+                    explanation=f"Step {i}: Stub (LLM classification unavailable)",
                 )
             )
-
         return reports

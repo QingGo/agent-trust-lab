@@ -36,8 +36,8 @@ class TrapManager:
                         self._traps[trap.trap_id] = trap
                     except (yaml.YAMLError, pydantic.ValidationError) as e:
                         logger.warning("Failed to load trap from %s: %s", filepath, e)
-                    except Exception:
-                        logger.warning("Failed to load trap from %s:", filepath, exc_info=True)
+                    except Exception as e:
+                        logger.warning("Failed to load trap from %s: %s", filepath, e)
 
     def load_traps(
         self,

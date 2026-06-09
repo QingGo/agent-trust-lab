@@ -35,3 +35,4 @@ calibration_candidates.json
 annotations.json
 .omo/
 .opencode/
+redteam_output/

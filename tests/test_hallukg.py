@@ -2,6 +2,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from agent_trust_lab.config import DEFAULT_MODEL
 from agent_trust_lab.hallukg import (
     AnchoringReasoner,
     CodeHalluChecker,
@@ -21,49 +22,41 @@ class TestTripleExtractor:
 
     def test_default_construction(self):
         extractor = TripleExtractor()
-        assert extractor.model == "gpt-4o-mini"
+        assert extractor.model == DEFAULT_MODEL
 
     def test_custom_model_construction(self):
         extractor = TripleExtractor(model="custom-model")
         assert extractor.model == "custom-model"
 
-    def test_model_name_backward_compat(self):
-        extractor = TripleExtractor(model_name="legacy-model")
-        assert extractor.model == "legacy-model"
-
     def test_extract_returns_list(self):
         extractor = TripleExtractor()
         result = extractor.extract("Hello world")
         assert isinstance(result, list)
-        assert len(result) == 1
 
-    def test_extract_triple_structure(self):
+    def test_extract_stub_returns_empty(self):
+        """Stub extraction returns empty list on LLM failure — no fake triples."""
         extractor = TripleExtractor()
         result = extractor.extract("Some text about agents")
-        triple = result[0]
-        assert triple["subject"] == "agent"
-        assert triple["predicate"] == "generated_output"
-        assert isinstance(triple["object"], str)
-        assert triple["confidence"] == 0.85
+        assert result == []
 
-    def test_extract_truncates_long_text(self):
+    def test_extract_stub_behavior_long_text(self):
+        """Stub extraction returns empty list regardless of input size."""
         extractor = TripleExtractor()
         long_text = "A" * 150
         result = extractor.extract(long_text)
-        triple = result[0]
-        assert len(triple["object"]) <= 80
+        assert result == []
 
-    def test_extract_empty_text(self):
+    def test_extract_stub_behavior_empty_text(self):
+        """Stub extraction returns empty list for empty input."""
         extractor = TripleExtractor()
         result = extractor.extract("")
-        triple = result[0]
-        assert triple["object"] == ""
+        assert result == []
 
-    def test_extract_handles_newlines(self):
+    def test_extract_stub_behavior_newlines(self):
+        """Stub extraction returns empty list regardless of content."""
         extractor = TripleExtractor()
         result = extractor.extract("line1\nline2\nline3")
-        triple = result[0]
-        assert "\n" not in triple["object"]
+        assert result == []
 
     def test_extract_with_real_llm(self):
         """Verify real LLM path is called when API key is available."""
@@ -93,9 +86,7 @@ class TestTripleExtractor:
             ):
                 extractor = TripleExtractor()
                 result = extractor.extract("test")
-                assert len(result) == 1
-                assert result[0]["subject"] == "agent"
-                assert result[0]["confidence"] == 0.85
+                assert result == []
 
 
 class TestAnchoringReasoner:
@@ -414,12 +405,12 @@ class TestGSARClassifier:
         assert len(reports) == 1
         assert isinstance(reports[0], HalluStepReport)
 
-    def test_classify_cycles_gsar_labels(self):
+    def test_classify_stub_returns_unknown(self):
         classifier = GSARClassifier()
         steps = [TrajectoryStep(type="thought", content=f"step{i}") for i in range(5)]
         reports = classifier.classify(steps, [])
         labels = [r.gsar_label for r in reports]
-        assert labels == ["Grounded", "Grounded", "Complementary", "Ungrounded", "Contradicted"]
+        assert all(label == "Unknown" for label in labels)
 
     def test_classify_step_indices(self):
         classifier = GSARClassifier()
@@ -428,16 +419,16 @@ class TestGSARClassifier:
         for i, report in enumerate(reports):
             assert report.step_index == i
 
-    def test_classify_grounded_scores(self):
+    def test_classify_stub_neutral_scores(self):
         classifier = GSARClassifier()
         steps = [TrajectoryStep(type="thought", content="s")]
         reports = classifier.classify(steps, [])
-        assert reports[0].g_score == 0.7
-        assert reports[0].u_score == 0.1
-        assert reports[0].c_score == 0.2
-        assert reports[0].faithfulness_score == 0.95
+        assert reports[0].g_score == 0.5
+        assert reports[0].u_score == 0.0
+        assert reports[0].c_score == 0.0
+        assert reports[0].faithfulness_score == 0.5
 
-    def test_classify_complementary_scores(self):
+    def test_classify_stub_all_unknown_label(self):
         classifier = GSARClassifier()
         steps = [
             TrajectoryStep(type="thought", content="s"),
@@ -445,21 +436,20 @@ class TestGSARClassifier:
             TrajectoryStep(type="thought", content="s"),
         ]
         reports = classifier.classify(steps, [])
-        complementary = reports[2]
-        assert complementary.gsar_label == "Complementary"
-        assert complementary.g_score == 0.3
+        assert reports[2].gsar_label == "Unknown"
+        assert reports[2].g_score == 0.5
 
     def test_classify_empty_steps(self):
         classifier = GSARClassifier()
         reports = classifier.classify([], [])
         assert reports == []
 
-    def test_classify_has_evidence_and_explanation(self):
+    def test_classify_stub_has_no_evidence(self):
         classifier = GSARClassifier()
         steps = [TrajectoryStep(type="thought", content="step")]
         reports = classifier.classify(steps, [])
-        assert len(reports[0].evidence) == 1
-        assert "stub" in reports[0].explanation.lower()
+        assert reports[0].evidence == []
+        assert "Stub" in reports[0].explanation
 
     def test_model_parameter(self):
         classifier = GSARClassifier(model="custom-gsar-model")
@@ -694,7 +684,8 @@ class TestFaithfulnessChecker:
     @pytest.fixture(autouse=True)
     def _disable_onnx_nli(self):
         with patch(
-            "agent_trust_lab.hallukg.faithfulness._ensure_nli_loaded", return_value=False
+            "agent_trust_lab.hallukg.faithfulness._get_shared_session",
+            return_value=MagicMock(available=False),
         ):
             yield
 
