@@ -5,7 +5,7 @@
 一个系统性的安全评估框架，通过对抗性陷阱测试 AI Agent，在多维度沙箱环境中运行，生成包含合规审计、GSAR 幻觉检测、代码验证和跨模型对比的可信度报告。
 
 [![Python](https://img.shields.io/badge/python-3.10+-blue.svg)](https://python.org)
-[![Tests](https://img.shields.io/badge/tests-755+-green.svg)](.)
+[![Tests](https://img.shields.io/badge/tests-946+-green.svg)](.)
 [![License](https://img.shields.io/badge/license-MIT-yellow.svg)](LICENSE)
 
 > 📖 **English Docs**: [README.md](README.md)
@@ -52,10 +52,10 @@
 
 | Model | Pass | G | F | U(↓) | C(↓) | G* |
 |------|:---:|:---:|:---:|:---:|:---:|:---:|
-| deepseek-v4-flash (no-think) | 63% | 0.44 | 0.89 | 0.31 | 0.20 | 0.15 |
-| deepseek-v4-flash (think max) | 61% | 0.47 | 0.88 | 0.39 | 0.19 | 0.14 |
-| deepseek-v4-pro (no-think) | 62% | 0.57 | 0.87 | 0.41 | 0.12 | 0.22 |
-| deepseek-v4-pro (think max) | 61% | 0.56 | 0.85 | 0.43 | 0.12 | 0.20 |
+| deepseek-v4-flash (no-think) | 63% | 0.44 | 0.67 | 0.31 | 0.20 | 0.15 |
+| deepseek-v4-flash (think max) | 61% | 0.47 | 0.66 | 0.39 | 0.19 | 0.14 |
+| deepseek-v4-pro (no-think) | 62% | 0.57 | 0.65 | 0.41 | 0.12 | 0.22 |
+| deepseek-v4-pro (think max) | 61% | 0.56 | 0.63 | 0.43 | 0.12 | 0.20 |
 
 > **G** = GSAR LLM 评判锚定度 ｜ **F** = ONNX NLI 忠实度 ｜ **U** = 虚报率（越低越好）｜ **C** = 漏报率（越低越好）｜ **G\*** = 真锚定率（越高越好）
 
@@ -63,7 +63,7 @@
 - Pro 模型真锚定率更高（G* 0.22 vs 0.15），但更激进（U 0.43 vs 0.31）——更频繁地在无锚定证据时声称 Grounded
 - Flash 模型更保守（U 低），但漏报更多（C 高）
 - Thinking 模式增加虚报率（U 上升），对通过率无帮助
-- ONNX NLI（deberta-base-mnli，532MB 本地推理）恢复了 F-score 的区分度
+- **GSAR-NLI 融合 v2**：翻转 α 权重（NLI 现占 F 分数的 70-80%）+ 相对蕴含/矛盾 NLI 公式，F 分数区分度相比原始熵加权公式提升约 3 倍
 - 锚定系统衍生的 U/C 分数（确定性，非 LLM）比原始 LLM-only U/C 区分度提升 4 倍
 
 ---
@@ -306,6 +306,23 @@ agent-trust-lab generate-novel \
 agent-trust-lab serve --port 7860
 ```
 
+### 配置与对比
+
+```bash
+# 查看默认配置及帮助文本
+agent-trust-lab config
+
+# 从默认值生成 config.yaml（可跨命令复用）
+agent-trust-lab config --init --output my-config.yaml
+
+# 检查已有配置文件
+agent-trust-lab config --show my-config.yaml
+
+# 并列对比两次评估结果
+agent-trust-lab diff results_v1.json results_v2.json
+agent-trust-lab diff results_v1.json results_v2.json --threshold 0.10
+```
+
 ### 常用选项
 
 | 选项 | 描述 | 默认值 |
@@ -465,7 +482,7 @@ agent-trust-lab calibrate results/ --annotations annotations.json
 |------|------|------|
 | **Pass Rate** | PAEAuditor（12 条规则） | 合规审计——工具授权、命令注入、数据泄露等 |
 | **G（锚定度）** | GSAR LLM 评判器 | LLM 根据锚定知识三元组对 Agent 每步输出进行分类 |
-| **F（忠实度）** | GSAR 评判器 + ONNX NLI | 混合：`α·GSAR_F + (1-α)·NLI_score`，使用 `deberta-base-mnli`（532MB ONNX） |
+| **F（忠实度）** | GSAR 评判器 + ONNX NLI | 混合：`α·GSAR_F + (1-α)·NLI_score`。NLI 使用相对蕴含公式（P(entail)/(P(entail)+P(contra))）基于 deberta-base-mnli（532MB ONNX）。α 默认 0.2-0.3（NLI 主导），打破自洽性偏差 |
 | **U（虚报率）** | 锚定系统衍生 | LLM 判 Grounded 但锚定找不到证据的步骤比例——确定性计算 |
 | **C（漏报率）** | 锚定系统衍生 | LLM 判 Complementary 但锚定找到了证据的步骤比例——确定性计算 |
 | **G\*（真锚定率）** | LLM + 锚定一致 | LLM 和锚定系统同时判 Grounded 的步骤比例 |
@@ -502,7 +519,7 @@ npm install -g basedpyright
 make lint          # ruff 检查（L0，~0.1s）
 make typecheck     # basedpyright 类型检查（L0，~1s）
 make test-unit     # 快速单元测试（L1，<1s）
-make test-all      # 完整测试套件（755 个测试，~180s）
+make test-all      # 完整测试套件（946 个测试，~300s）
 make smoke         # 快速验证（~1.5s）
 ```
 
@@ -510,7 +527,7 @@ make smoke         # 快速验证（~1.5s）
 
 | 级别 | 命令 | 测试数 | 要求 |
 |------|------|--------|------|
-| 单元 | `make test-unit` | 755+ | 无 |
+| 单元 | `make test-unit` | 946+ | 无 |
 | 集成 | `make test-integration` | 20 | DEEPSEEK_API_KEY |
 | Docker | `make test-docker` | 5 | Docker 守护进程 |
 | ONNX | `make test-slow` | 7 | ONNX 模型已缓存 |
@@ -521,33 +538,43 @@ make smoke         # 快速验证（~1.5s）
 
 ```
 src/agent_trust_lab/
-├── cli.py                # 17 个 Typer 命令（入口点）
-├── config.py             # EvaluationConfig 数据类（28 字段）
-├── orchestrator.py       # 主管道：run_single、run_traps、replay
+├── cli/                  # 21 个 Typer 命令（入口点）
+├── config.py             # EvaluationConfig 数据类（44 字段）
+├── pipeline/             # 编排：run_single、run_traps、replay
+│   ├── orchestrator.py   # 主管道控制器
+│   ├── hallukg_pipeline.py # 幻觉分析编排
+│   ├── sampling.py       # 自适应采样 + 自洽性
+│   └── models.py         # EvaluationResult + 序列化
+├── core/                 # 抽象层
+│   └── protocols.py      # 4 个协议：LLMClient、NLIModel、EmbeddingModel、ContainerRuntime
 ├── api.py                # TrustLab + CodeLab Python API
 ├── batch.py              # 多配置批量评估 + 并发模式
-├── llm.py                # LLM 客户端工厂（DeepSeek API）
-├── log.py                # 日志配置
+├── llm.py                # LLM 客户端工厂（DeepSeek API）+ TokenTracker
 ├── onnx_setup.py         # ONNX 模型导出（deberta-base-mnli、MiniLM）
 ├── models/               # Pydantic 模式定义
 │   ├── trap.py           # EnhancedTrapDef
 │   ├── trajectory.py     # SecureTrajectory、AgentHarness ABC
 │   └── report.py         # ComplianceReport、HalluStepReport 等
-├── adapters/             # 8 个注册 Agent 适配器
+├── adapters/             # 8 个注册 Agent 适配器（支持 DI）
 │   ├── registry.py       # @register_adapter 装饰器
-│   ├── harnesses.py      # LangChain、OpenAI、Codex 适配器
-│   └── cli_harnesses.py  # OpenCode、ClaudeCode、GeminiCLI 适配器
-├── sandbox/              # Docker + dry-run 沙箱后端
+│   ├── _base.py          # BaseLLMHarness
+│   ├── _cli_base.py      # BaseCLIHarness
+│   ├── harnesses.py      # LangChain、OpenAI、Codex
+│   └── cli_harnesses.py  # OpenCode、ClaudeCode、GeminiCLI
+├── sandbox/              # Docker + dry-run 沙箱后端（支持 DI）
+│   ├── backends.py       # DockerSandbox、DryRunSandbox
+│   ├── runtime.py        # DockerContainerRuntime、StubContainerRuntime
+│   └── image.py          # ImageManager
 ├── audit/                # PAEAuditor + 12 条合规规则
-├── hallukg/              # 幻觉检测管道（6 个模块）
+├── hallukg/              # 幻觉检测管道（6 个模块，支持 DI）
 ├── calibration/          # Platt 缩放、标注工具
-├── traps/                # 160 个 YAML 陷阱 + 变异系统
+├── traps/                # 76 个 YAML 陷阱 + 变异系统（65 个生成器）
 ├── redteam/              # 红队陷阱生成器 + 强化器
-├── report/               # Jinja2 → HTML/MD 报告生成器
+├── report/               # Jinja2 → HTML/MD 报告生成器 + 国际化
 └── web/                  # Gradio Web 界面（4 个标签页）
 ```
 
-完整架构（63 条设计规则）、适配器注册详情和管道集成说明，请参见 [AGENTS.md](AGENTS.md)。
+完整架构（34 条设计规则）、DI 协议模式和管道集成说明，请参见 [AGENTS.md](AGENTS.md)。
 
 ---
 

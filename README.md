@@ -5,7 +5,7 @@
 A systematic security evaluation framework that subjects AI agents to adversarial traps, runs them through sandboxed harnesses, and produces multi-dimensional trustworthiness reports — covering compliance auditing, GSAR hallucination detection, code verification, and cross-model comparison.
 
 [![Python](https://img.shields.io/badge/python-3.10+-blue.svg)](https://python.org)
-[![Tests](https://img.shields.io/badge/tests-755+-green.svg)](.)
+[![Tests](https://img.shields.io/badge/tests-946+-green.svg)](.)
 [![License](https://img.shields.io/badge/license-MIT-yellow.svg)](LICENSE)
 
 > 📖 **中文文档**: [README_CN.md](README_CN.md)
@@ -52,10 +52,10 @@ Evaluated across **76 curated traps / 31 attack types** (streamlined from 160 fo
 
 | Model | Pass | G | F | U(↓) | C(↓) | G* |
 |------|:---:|:---:|:---:|:---:|:---:|:---:|
-| deepseek-v4-flash (no-think) | 63% | 0.44 | 0.89 | 0.31 | 0.20 | 0.15 |
-| deepseek-v4-flash (think max) | 61% | 0.47 | 0.88 | 0.39 | 0.19 | 0.14 |
-| deepseek-v4-pro (no-think) | 62% | 0.57 | 0.87 | 0.41 | 0.12 | 0.22 |
-| deepseek-v4-pro (think max) | 61% | 0.56 | 0.85 | 0.43 | 0.12 | 0.20 |
+| deepseek-v4-flash (no-think) | 63% | 0.44 | 0.67 | 0.31 | 0.20 | 0.15 |
+| deepseek-v4-flash (think max) | 61% | 0.47 | 0.66 | 0.39 | 0.19 | 0.14 |
+| deepseek-v4-pro (no-think) | 62% | 0.57 | 0.65 | 0.41 | 0.12 | 0.22 |
+| deepseek-v4-pro (think max) | 61% | 0.56 | 0.63 | 0.43 | 0.12 | 0.20 |
 
 > **G** = GSAR LLM Judge groundedness ｜ **F** = ONNX NLI faithfulness ｜ **U** = over-claim rate (lower is better) ｜ **C** = missed-evidence rate (lower is better) ｜ **G\*** = true grounded rate (higher is better)
 
@@ -63,7 +63,7 @@ Evaluated across **76 curated traps / 31 attack types** (streamlined from 160 fo
 - Pro models achieve higher true groundedness (G* 0.22 vs 0.15) but are more overconfident (U 0.43 vs 0.31) — they claim "Grounded" more often without anchor evidence
 - Flash models are more conservative (low U) but miss more evidence (high C)
 - Thinking mode increases overconfidence (U rises) for both models without improving pass rate
-- ONNX NLI (deberta-base-mnli, 532MB local) restores F-score differentiation vs TF-IDF fallback
+- **GSAR-NLI fusion v2**: Flipped α weights (NLI now 70-80% of F score) + relative entailment/contradiction NLI formula provides ~3x better F-score discrimination vs the original entropy-weighted formula
 - Anchor-derived U/C scores (deterministic, not LLM judge) provide 4x better discrimination than original LLM-only U/C
 
 ---
@@ -306,6 +306,23 @@ agent-trust-lab generate-novel \
 agent-trust-lab serve --port 7860
 ```
 
+### Configuration & Comparison
+
+```bash
+# Show default configuration with inline help
+agent-trust-lab config
+
+# Generate a config.yaml from defaults (reusable across commands)
+agent-trust-lab config --init --output my-config.yaml
+
+# Inspect an existing configuration file
+agent-trust-lab config --show my-config.yaml
+
+# Compare two evaluation result files side by side
+agent-trust-lab diff results_v1.json results_v2.json
+agent-trust-lab diff results_v1.json results_v2.json --threshold 0.10
+```
+
 ### Common Options
 
 | Flag | Description | Default |
@@ -465,7 +482,7 @@ When running `batch` or `report` with merged results:
 |-----------|--------|--------|
 | **Pass Rate** | PAEAuditor (12 rules) | Compliance audit — tool authorization, cmd injection, data exfiltration, etc. |
 | **G (Grounded)** | GSAR LLM Judge | LLM classifies each agent step against anchored knowledge triples |
-| **F (Faithfulness)** | GSAR Judge + ONNX NLI | Blended: `α·GSAR_F + (1-α)·NLI_score` using `deberta-base-mnli` (532MB ONNX) |
+| **F (Faithfulness)** | GSAR Judge + ONNX NLI | Blended: `α·GSAR_F + (1-α)·NLI_score`. NLI uses relative entailment (P(entail)/(P(entail)+P(contra))) on deberta-base-mnli (532MB ONNX). α defaults to 0.2-0.3 (NLI-weighted) to break self-consistency bias |
 | **U (Over-claim)** | Anchor-derived | Steps where LLM says "Grounded" but anchoring found no evidence — deterministic |
 | **C (Missed-evidence)** | Anchor-derived | Steps where LLM missed evidence that anchoring found — deterministic |
 | **G\* (True Grounded)** | LLM + Anchor agreement | Steps where both LLM judge and anchoring system agree on "Grounded" |
@@ -502,7 +519,7 @@ npm install -g basedpyright
 make lint          # ruff check (L0, ~0.1s)
 make typecheck     # basedpyright src/ (L0, ~1s)
 make test-unit     # fast unit tests (L1, <1s)
-make test-all      # full suite (755 tests, ~180s)
+make test-all      # full suite (946 tests, ~300s)
 make smoke         # validate-traps + log/llm tests (~1.5s)
 ```
 
@@ -510,7 +527,7 @@ make smoke         # validate-traps + log/llm tests (~1.5s)
 
 | Level | Command | Tests | Requirements |
 |-------|---------|-------|-------------|
-| Unit | `make test-unit` | 755+ | None |
+| Unit | `make test-unit` | 946+ | None |
 | Integration | `make test-integration` | 20 | DEEPSEEK_API_KEY |
 | Docker | `make test-docker` | 5 | Docker daemon |
 | ONNX | `make test-slow` | 7 | ONNX models cached |
@@ -521,33 +538,43 @@ make smoke         # validate-traps + log/llm tests (~1.5s)
 
 ```
 src/agent_trust_lab/
-├── cli.py                # 17 Typer commands (entry point)
-├── config.py             # EvaluationConfig dataclass (28 fields)
-├── orchestrator.py       # Main pipeline: run_single, run_traps, replay
+├── cli/                  # 21 Typer commands (entry point)
+├── config.py             # EvaluationConfig dataclass (44 fields)
+├── pipeline/             # Orchestration: run_single, run_traps, replay
+│   ├── orchestrator.py   # Main pipeline controller
+│   ├── hallukg_pipeline.py # Hallucination analysis orchestration
+│   ├── sampling.py       # Adaptive sampling + self-consistency
+│   └── models.py         # EvaluationResult + serialization
+├── core/                 # Abstraction layer
+│   └── protocols.py      # 4 protocols: LLMClient, NLIModel, EmbeddingModel, ContainerRuntime
 ├── api.py                # TrustLab + CodeLab Python API
 ├── batch.py              # Multi-config batch evaluation + concurrent mode
-├── llm.py                # LLM client factory (DeepSeek API)
-├── log.py                # Logging configuration
+├── llm.py                # LLM client factory (DeepSeek API) + TokenTracker
 ├── onnx_setup.py         # ONNX model export (deberta-base-mnli, MiniLM)
 ├── models/               # Pydantic schemas
 │   ├── trap.py           # EnhancedTrapDef
 │   ├── trajectory.py     # SecureTrajectory, AgentHarness ABC
 │   └── report.py         # ComplianceReport, HalluStepReport, etc.
-├── adapters/             # 8 registered agent harnesses
+├── adapters/             # 8 registered agent harnesses (DI-capable)
 │   ├── registry.py       # @register_adapter decorator
-│   ├── harnesses.py      # LangChain, OpenAI, Codex harnesses
-│   └── cli_harnesses.py  # OpenCode, ClaudeCode, GeminiCLI harnesses
-├── sandbox/              # Docker + dry-run sandbox backends
+│   ├── _base.py          # BaseLLMHarness
+│   ├── _cli_base.py      # BaseCLIHarness
+│   ├── harnesses.py      # LangChain, OpenAI, Codex
+│   └── cli_harnesses.py  # OpenCode, ClaudeCode, GeminiCLI
+├── sandbox/              # Docker + dry-run sandbox backends (DI-capable)
+│   ├── backends.py       # DockerSandbox, DryRunSandbox
+│   ├── runtime.py        # DockerContainerRuntime, StubContainerRuntime
+│   └── image.py          # ImageManager
 ├── audit/                # PAEAuditor + 12 compliance rules
-├── hallukg/              # Hallucination detection pipeline (6 modules)
+├── hallukg/              # Hallucination detection pipeline (6 modules, DI-capable)
 ├── calibration/          # Platt scaling, annotation tools
-├── traps/                # 160 YAML traps + mutation system
+├── traps/                # 76 YAML traps + mutation system (65 generators)
 ├── redteam/              # Red team trap generator + hardener
-├── report/               # Jinja2 → HTML/MD report generator
+├── report/               # Jinja2 → HTML/MD report generator + i18n
 └── web/                  # Gradio web UI (4 tabs)
 ```
 
-See [AGENTS.md](AGENTS.md) for full architecture with 63 design rules, adapter registry details, and pipeline integration notes.
+See [AGENTS.md](AGENTS.md) for full architecture with 34 design rules, DI protocol patterns, and pipeline integration notes.
 
 ---
 

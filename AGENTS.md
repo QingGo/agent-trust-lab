@@ -10,7 +10,7 @@
 |---|---|
 | Source files | 104 Python files across 14 packages |
 | Test files | 25 (`tests/test_*.py`) + integration tests |
-| Tests passing | 944 (45 deselected for pre-existing env deps) |
+| Tests passing | 946 (45 deselected for pre-existing env deps) |
 | Python version | 3.10 only (`requires-python == "3.10.*"`) |
 | Package manager | `uv` (venv managed by uv, use `uv pip install`) |
 | Type checker | basedpyright (0 errors on `src/`) |
@@ -33,13 +33,15 @@ src/agent_trust_lab/
 ├── log.py                 # Logging config
 ├── onnx_setup.py           # ONNX model export
 │
-├── cli/                   # 19 commands, max 316 lines each
+├── cli/                   # 21 commands, max 316 lines each
 │   ├── __init__.py         # Typer app assembly
 │   ├── _shared.py          # Common helpers (trap loading, progress)
 │   ├── run.py, run_code.py # Main evaluation commands
 │   ├── report.py           # Report generation
 │   ├── batch.py            # Batch from YAML
 │   ├── serve.py            # Web UI
+│   ├── config.py           # Configuration management
+│   ├── diff.py             # Compare two evaluation results
 │   ├── calibrate.py, annotate.py, extract_calibration.py
 │   ├── validate_traps.py, list_traps.py, show_trap.py
 │   ├── generate_traps.py, harden_traps.py, generate_novel.py
@@ -270,7 +272,7 @@ CLI harnesses (opencode, claude-code, gemini-cli) fall back to stub mode when CL
 | Test File | What It Covers | Count |
 |---|---|---|
 | `test_hallukg.py` | GSARClassifier, TripleExtractor, AnchoringReasoner, FaithfulnessChecker, CodeHalluChecker | 132 |
-| `test_cli.py` | All 19 CLI commands (smoke tests) | 24 |
+| `test_cli.py` | All 21 CLI commands (smoke tests) | 26 |
 | `test_orchestrator.py` | Pipeline orchestration, evaluation flow | ~80 |
 | `test_pipeline.py` | _std_dev, average_step_scores, EvaluationResult | 18 |
 | `test_report.py` | Report generation, i18n, share cards | ~70 |
@@ -344,6 +346,8 @@ basedpyright src/
 
 | Commit | Description |
 |---|---|
+| `a117e54` | Add config and diff CLI commands (21 total) |
+| `16a402b` | Fix GSAR discrimination: flip α weights, relative NLI scoring |
 | `b4c45b9` | Test DI cleanup + pipeline unit tests (18 new) |
 | `1b73794` | Wire ContainerRuntime protocol into DockerSandbox |
 | `f77cfe2` | Fix ONNX embedding bug + wire LLMClient/EmbeddingModel |
