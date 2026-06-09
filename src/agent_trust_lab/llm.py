@@ -2,7 +2,7 @@ import os
 import threading
 import time
 from dataclasses import dataclass
-from typing import Callable, Dict, Optional, TypeVar
+from typing import Any, Callable, Dict, Optional, TypeVar
 
 from dotenv import load_dotenv
 from openai import APIConnectionError, APIError, APITimeoutError, OpenAI, RateLimitError
@@ -109,6 +109,23 @@ def create_openai_client(
     resolved_key = get_api_key(api_key)
     resolved_url = get_base_url(base_url)
     return OpenAI(api_key=resolved_key or "", base_url=resolved_url, max_retries=max_retries)
+
+
+def create_instructor_client(
+    api_key: str = "",
+    base_url: str = "",
+    model: str = "",
+) -> Any:
+    """Create an instructor-wrapped OpenAI client for structured LLM completions.
+
+    Used by GSARClassifier, TripleExtractor, and other modules that need
+    structured (Pydantic) output from LLMs. Accepts optional injection
+    for testing — pass an instructor-compatible client directly.
+    """
+    import instructor
+
+    client = create_openai_client(model=model, api_key=api_key, base_url=base_url)
+    return instructor.from_openai(client)
 
 
 def create_langchain_llm(

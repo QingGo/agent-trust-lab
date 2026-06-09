@@ -1,4 +1,4 @@
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field
 
@@ -26,9 +26,15 @@ class TripleExtractor:
     Falls back to stub on any API error.
     """
 
-    def __init__(self, model: str = "", strict_mode: bool = False):
+    def __init__(
+        self,
+        model: str = "",
+        strict_mode: bool = False,
+        instructor_client: Optional[Any] = None,
+    ):
         self.model = model or DEFAULT_MODEL
         self.strict_mode = strict_mode
+        self._instructor_client = instructor_client
 
     def extract(self, text: str) -> List[Dict[str, Any]]:
         from agent_trust_lab.llm import _RETRYABLE_ERRORS, retry_with_backoff
@@ -50,16 +56,19 @@ class TripleExtractor:
         return self._extract_stub(text)
 
     def _extract_with_llm(self, text: str) -> List[Dict[str, Any]]:
-        import instructor
-
-        from agent_trust_lab.llm import create_openai_client, get_api_key, get_base_url
+        from agent_trust_lab.llm import (
+            create_instructor_client,
+            get_api_key,
+            get_base_url,
+        )
 
         api_key = get_api_key()
         if not api_key:
             raise ValueError("No API key available for TripleExtractor LLM call")
 
-        client = create_openai_client(api_key=api_key, base_url=get_base_url())
-        instructor_client = instructor.from_openai(client)
+        instructor_client = self._instructor_client or create_instructor_client(
+            api_key=api_key, base_url=get_base_url()
+        )
 
         result = instructor_client.chat.completions.create(
             model=self.model,

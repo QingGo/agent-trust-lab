@@ -27,28 +27,26 @@ from typing import Any, Protocol
 
 
 class LLMClient(Protocol):
-    """A language model client producing structured chat completions.
+    """A configured instructor-wrapped LLM client for structured completions.
 
-    Abstract over OpenAI-compatible APIs (DeepSeek, OpenAI, Anthropic via
-    compatible endpoint, local models via vLLM/Ollama).
+    Provides instructor-style structured output via Pydantic models:
+        result = client.chat.completions.create(
+            model=..., messages=..., response_model=SomePydanticModel, ...
+        )
+
+    Abstract over different LLM providers (DeepSeek, OpenAI, etc.) all
+    accessed through the instructor interface.
     """
 
-    def chat(
-        self,
-        messages: list[dict[str, str]],
-        model: str = "",
-        temperature: float = 0.0,
-        response_format: Any = None,
-        **kwargs: Any,
-    ) -> Any:
-        """Send a chat completion request and return the response.
+    class ChatProxy(Protocol):
+        class CompletionsProxy(Protocol):
+            def create(self, **kwargs: Any) -> Any: ...
 
-        Returns:
-            A response object with at minimum:
-            - .choices[0].message.content: str
-            - .usage: token counts (optional)
-        """
-        ...
+        @property
+        def completions(self) -> "LLMClient.CompletionsProxy": ...
+
+    @property
+    def chat(self) -> "LLMClient.ChatProxy": ...
 
 
 class NLIModel(Protocol):

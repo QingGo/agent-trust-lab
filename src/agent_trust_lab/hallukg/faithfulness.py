@@ -72,6 +72,8 @@ class ONNXNLISession:
         encoded = self._tokenizer.encode(premise, hypothesis)
         input_ids = np.array([encoded.ids], dtype=np.int64)
         attention_mask = np.array([encoded.attention_mask], dtype=np.int64)
+        type_ids = getattr(encoded, "type_ids", [0] * len(encoded.ids))
+        token_type_ids = np.array([type_ids], dtype=np.int64)
 
         input_feed = {}
         input_names = [i.name for i in self._session.get_inputs()]
@@ -79,6 +81,8 @@ class ONNXNLISession:
             input_feed["input_ids"] = input_ids
         if "attention_mask" in input_names:
             input_feed["attention_mask"] = attention_mask
+        if "token_type_ids" in input_names:
+            input_feed["token_type_ids"] = token_type_ids
 
         outputs = self._session.run(None, input_feed)
         return np.asarray(outputs[0])[0]

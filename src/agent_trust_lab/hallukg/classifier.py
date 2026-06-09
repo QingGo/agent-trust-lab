@@ -1,4 +1,4 @@
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field
 
@@ -116,10 +116,17 @@ class GSARClassifier:
     Session 30: Structured rubric + few-shot examples from gsar_golden.json.
     """
 
-    def __init__(self, model: str = "", strict_mode: bool = False, temperature: float = 0.0):
+    def __init__(
+        self,
+        model: str = "",
+        strict_mode: bool = False,
+        temperature: float = 0.0,
+        instructor_client: Optional[Any] = None,
+    ):
         self.model = model or DEFAULT_MODEL
         self.strict_mode = strict_mode
         self.temperature = temperature
+        self._instructor_client = instructor_client
 
     def classify(
         self,
@@ -280,13 +287,19 @@ class GSARClassifier:
         steps: list,
         anchored_triples: List[Dict[str, Any]],
     ) -> List[HalluStepReport]:
-        import instructor
-
-        from agent_trust_lab.llm import create_openai_client, get_api_key, get_base_url
+        from agent_trust_lab.llm import (
+            create_instructor_client,
+            get_api_key,
+            get_base_url,
+        )
 
         api_key = get_api_key()
         if not api_key:
             raise ValueError("No API key available for GSARClassifier LLM call")
+
+        instructor_client = self._instructor_client or create_instructor_client(
+            api_key=api_key, base_url=get_base_url()
+        )
 
         step_entries = []
         for i, step in enumerate(steps):
@@ -298,9 +311,6 @@ class GSARClassifier:
             f"- {t.get('subject', '')} {t.get('predicate', '')} {t.get('object', '')}"
             for t in anchored_triples
         )
-
-        client = create_openai_client(api_key=api_key, base_url=get_base_url())
-        instructor_client = instructor.from_openai(client)
 
         system_prompt = GSAR_RUBRIC + "\n\n" + FEW_SHOT_EXAMPLES
         result = instructor_client.chat.completions.create(

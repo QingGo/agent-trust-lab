@@ -4,6 +4,7 @@ from typing import Any, Dict, List, Optional
 import numpy as np
 
 from agent_trust_lab.config import ONNX_CACHE_DIR
+from agent_trust_lab.core.protocols import EmbeddingModel
 from agent_trust_lab.log import get_logger
 
 logger = get_logger("hallukg.anchoring")
@@ -65,14 +66,35 @@ class EmbeddingEngine:
             enc = tokenizer.encode(text)
             input_ids = np.array([enc.ids], dtype=np.int64)
             attention_mask = np.array([enc.attention_mask], dtype=np.int64)
-            feed_dict = {"input_ids": input_ids, "attention_mask": attention_mask}
+            type_ids = getattr(enc, "type_ids", [0] * len(enc.ids))
+            token_type_ids = np.array([type_ids], dtype=np.int64)
+            input_names = [i.name for i in session.get_inputs()]
+            feed_dict = {
+                "input_ids": input_ids,
+                "attention_mask": attention_mask,
+            }
+            if "token_type_ids" in input_names:
+                feed_dict["token_type_ids"] = token_type_ids
             outputs = session.run(None, feed_dict)
-            vec = np.asarray(outputs[0])[0].astype(np.float64)
+            raw = np.asarray(outputs[0]).astype(np.float64)
+            if raw.ndim == 3:
+                mask = np.expand_dims(attention_mask.astype(np.float64), -1)
+                vec = (raw * mask).sum(axis=1) / (mask.sum(axis=1) + 1e-9)
+            else:
+                vec = raw
+            vec = vec[0]
             norm = np.linalg.norm(vec) + 1e-8
             return vec / norm
         except Exception as e:
             logger.warning("Embedding inference failed: %s", e)
             return None
+
+    def embed(self, text: str) -> list[float] | None:
+        """Satisfies EmbeddingModel protocol. Returns embedding as list[float]."""
+        vec = self.encode(text)
+        if vec is None:
+            return None
+        return vec.tolist()
 
 
 import threading
@@ -105,10 +127,12 @@ class AnchoringReasoner:
         knowledge_base_path: str = "./kb/",
         code_index_path: Optional[str] = None,
         grounded_threshold: float = 0.3,
+        embedding_model: Optional[EmbeddingModel] = None,
     ):
         self.knowledge_base_path = knowledge_base_path
         self.code_index_path = code_index_path
         self.grounded_threshold = grounded_threshold
+        self._embedding_model = embedding_model
         self._embedder = _get_embedding_engine()
 
     def anchor(self, triple: Dict[str, Any], knowledge_text: str = "") -> Dict[str, Any]:
@@ -195,14 +219,14 @@ class AnchoringReasoner:
         if not kb_sentences:
             return None
 
-        triple_emb = self._embedder.encode(triple_text)
+        triple_emb = self._encode(triple_text)
         if triple_emb is None:
             return None
 
         best_score = -1.0
         best_sentence = ""
         for sentence in kb_sentences:
-            kb_emb = self._embedder.encode(sentence)
+            kb_emb = self._encode(sentence)
             if kb_emb is None:
                 continue
             sim = float(np.dot(triple_emb, kb_emb))
@@ -221,6 +245,20 @@ class AnchoringReasoner:
             else [f"No semantic match (max {best_score:.3f}) against knowledge source"]
         )
         return best_score, evidence, label
+
+    def _encode(self, text: str) -> np.ndarray | None:
+        """Encode text to a normalized embedding vector.
+
+        Uses the injected EmbeddingModel if available, otherwise falls back
+        to the internal EmbeddingEngine singleton.
+        """
+        if self._embedding_model is not None and self._embedding_model.is_available:
+            vec = self._embedding_model.embed(text)
+            if vec is not None:
+                arr = np.asarray(vec, dtype=np.float64)
+                norm = np.linalg.norm(arr) + 1e-8
+                return arr / norm
+        return self._embedder.encode(text)
 
     def _compute_anchor_token_overlap(
         self, subject: str, obj: str, knowledge_text: str
