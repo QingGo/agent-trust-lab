@@ -286,10 +286,10 @@ class TestEvaluationConfig:
     def test_anchor_type_weights_default(self):
         config = EvaluationConfig()
         assert config.anchor_type_weights == {
-            "semantic": 0.7,
-            "token_overlap": 0.6,
-            "multi_hop": 0.6,
-            "none": 0.5,
+            "semantic": 0.3,
+            "token_overlap": 0.3,
+            "multi_hop": 0.3,
+            "none": 0.2,
         }
 
     def test_anchor_type_weights_custom(self):

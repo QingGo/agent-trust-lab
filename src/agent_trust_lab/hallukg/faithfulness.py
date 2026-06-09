@@ -106,9 +106,11 @@ class ONNXNLISession:
             exp_x = np.exp(logits - np.max(logits))
             probs = exp_x / exp_x.sum()
 
-            score = float(
-                probs[2] * 1.0 + probs[1] * neutral_weight + probs[0] * 0.0
-            )
+            total = probs[2] + probs[0]
+            if total > 0:
+                score = float(probs[2] / total)
+            else:
+                score = float(probs[1])
             return round(score, 4)
         except Exception:
             return None

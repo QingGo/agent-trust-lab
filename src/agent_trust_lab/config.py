@@ -56,10 +56,10 @@ class EvaluationConfig:
     nli_neutral_weight: float = 0.5
     anchor_type_weights: Dict[str, float] = field(
         default_factory=lambda: {
-            "semantic": 0.7,
-            "token_overlap": 0.6,
-            "multi_hop": 0.6,
-            "none": 0.5,
+            "semantic": 0.3,
+            "token_overlap": 0.3,
+            "multi_hop": 0.3,
+            "none": 0.2,
         }
     )
     cache_enabled: bool = True

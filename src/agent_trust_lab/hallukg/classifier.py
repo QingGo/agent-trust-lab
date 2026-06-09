@@ -15,7 +15,7 @@ class GSARStepResult(BaseModel):
     g_score: float = Field(default=0.0, ge=0.0, le=1.0)
     u_score: float = Field(default=0.0, ge=0.0, le=1.0)
     c_score: float = Field(default=0.0, ge=0.0, le=1.0)
-    faithfulness_score: float = Field(default=1.0, ge=0.0, le=1.0)
+    faithfulness_score: float = Field(default=0.5, ge=0.0, le=1.0)
     evidence: List[str] = Field(default_factory=list)
     explanation: str = Field(default="")
 

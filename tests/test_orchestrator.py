@@ -604,7 +604,7 @@ class TestAdaptiveFaithfulnessFusion:
         ):
             orch._apply_faithfulness_check([step], mock_trajectory)
 
-        expected = round(0.7 * 0.8 + 0.3 * 0.4, 4)
+        expected = round(0.3 * 0.8 + 0.7 * 0.4, 4)
         assert step.faithfulness_score == expected
 
     def test_apply_faithfulness_uses_none_weight(self, config):
@@ -631,7 +631,7 @@ class TestAdaptiveFaithfulnessFusion:
         ):
             orch._apply_faithfulness_check([step], mock_trajectory)
 
-        expected = round(0.5 * 0.3 + 0.5 * 0.6, 4)
+        expected = round(0.2 * 0.3 + 0.8 * 0.6, 4)
         assert step.faithfulness_score == expected
 
     def test_apply_faithfulness_skips_trap_injection(self, config):
