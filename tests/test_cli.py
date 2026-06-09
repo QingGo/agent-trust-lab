@@ -1,8 +1,8 @@
-"""Smoke tests: verify all 19 CLI commands register without crashing."""
+"""Smoke tests: verify all 21 CLI commands register without crashing."""
 
 
 def test_all_commands_registered():
-    """Verify all 19 CLI commands are registered on the Typer app."""
+    """Verify all 21 CLI commands are registered on the Typer app."""
     from agent_trust_lab.cli import app
 
     commands = [
@@ -13,6 +13,8 @@ def test_all_commands_registered():
         "annotate",
         "batch",
         "calibrate",
+        "config",
+        "diff",
         "extract_calibration_data",
         "generate_novel",
         "generate_traps",
@@ -83,7 +85,31 @@ def test_setup_onnx_status_no_crash():
     assert result.exit_code == 0
 
 
-# ── --help smoke tests for remaining 16 commands ──
+def test_config_defaults():
+    """Verify config command shows defaults without error."""
+    from typer.testing import CliRunner
+
+    from agent_trust_lab.cli import app
+
+    runner = CliRunner()
+    result = runner.invoke(app, ["config"])
+    assert result.exit_code == 0
+    assert "EvaluationConfig" in result.stdout
+    assert "model" in result.stdout
+
+
+def test_diff_missing_files():
+    """Verify diff exits cleanly with missing file error."""
+    from typer.testing import CliRunner
+
+    from agent_trust_lab.cli import app
+
+    runner = CliRunner()
+    result = runner.invoke(app, ["diff", "/nonexistent/a.json", "/nonexistent/b.json"])
+    assert result.exit_code == 1
+
+
+# ── --help smoke tests for remaining commands ──
 
 def test_show_trap_help():
     """show-trap --help exits cleanly"""

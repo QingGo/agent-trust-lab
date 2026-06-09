@@ -1,4 +1,4 @@
-"""CLI entry point for agent-trust-lab — 20 Typer commands.
+"""CLI entry point for agent-trust-lab — 21 Typer commands.
 
 Each command lives in its own module under cli/. Shared helpers (trap
 resolution, config building, progress display) live in _shared.py.
@@ -22,6 +22,8 @@ from agent_trust_lab.cli import (  # noqa: E402, F401
     annotate,
     batch,
     calibrate,
+    config,
+    diff,
     extract_calibration,
     generate_novel,
     generate_traps,
