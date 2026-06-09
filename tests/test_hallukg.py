@@ -67,26 +67,23 @@ class TestTripleExtractor:
         )
 
         with patch("agent_trust_lab.llm.get_api_key", return_value="mock-key"):
-            with patch("agent_trust_lab.llm.create_openai_client"):
-                with patch("instructor.from_openai") as mock_instructor:
-                    mock_client = mock_instructor.return_value
-                    mock_client.chat.completions.create.return_value = mock_response
-                    extractor = TripleExtractor(model="test-model")
-                    result = extractor.extract("The agent ran the test")
-                    assert len(result) == 1
-                    assert result[0]["subject"] == "agent"
-                    assert result[0]["predicate"] == "ran"
-                    assert result[0]["confidence"] == 0.9
+            mock_client = MagicMock()
+            mock_client.chat.completions.create.return_value = mock_response
+            extractor = TripleExtractor(model="test-model", instructor_client=mock_client)
+            result = extractor.extract("The agent ran the test")
+            assert len(result) == 1
+            assert result[0]["subject"] == "agent"
+            assert result[0]["predicate"] == "ran"
+            assert result[0]["confidence"] == 0.9
 
     def test_extract_fallback_to_stub_on_error(self):
         """Verify fallback to stub when LLM call raises exception."""
         with patch("agent_trust_lab.llm.get_api_key", return_value="mock-key"):
-            with patch(
-                "agent_trust_lab.llm.create_openai_client", side_effect=Exception("API error")
-            ):
-                extractor = TripleExtractor()
-                result = extractor.extract("test")
-                assert result == []
+            mock_client = MagicMock()
+            mock_client.chat.completions.create.side_effect = Exception("API error")
+            extractor = TripleExtractor(instructor_client=mock_client)
+            result = extractor.extract("test")
+            assert result == []
 
 
 class TestAnchoringReasoner:
@@ -479,29 +476,26 @@ class TestGSARClassifier:
         )
 
         with patch("agent_trust_lab.llm.get_api_key", return_value="mock-key"):
-            with patch("agent_trust_lab.llm.create_openai_client"):
-                with patch("instructor.from_openai") as mock_instructor:
-                    mock_client = mock_instructor.return_value
-                    mock_client.chat.completions.create.return_value = mock_response
-                    classifier = GSARClassifier(model="test-model")
-                    steps = [TrajectoryStep(type="thought", content="test")]
-                    result = classifier.classify(steps, [])
-                    assert len(result) == 1
-                    assert result[0].step_index == 0
-                    assert result[0].gsar_label == "Grounded"
-                    assert result[0].g_score == 0.9
+            mock_client = MagicMock()
+            mock_client.chat.completions.create.return_value = mock_response
+            classifier = GSARClassifier(model="test-model", instructor_client=mock_client)
+            steps = [TrajectoryStep(type="thought", content="test")]
+            result = classifier.classify(steps, [])
+            assert len(result) == 1
+            assert result[0].step_index == 0
+            assert result[0].gsar_label == "Grounded"
+            assert result[0].g_score == 0.9
 
     def test_classify_fallback_to_stub_on_error(self):
         """Verify fallback to stub when LLM call raises exception."""
         with patch("agent_trust_lab.llm.get_api_key", return_value="mock-key"):
-            with patch(
-                "agent_trust_lab.llm.create_openai_client", side_effect=Exception("API down")
-            ):
-                classifier = GSARClassifier()
-                steps = [TrajectoryStep(type="thought", content="s")]
-                result = classifier.classify(steps, [])
-                assert len(result) == 1
-                assert "stub" in result[0].explanation.lower()
+            mock_client = MagicMock()
+            mock_client.chat.completions.create.side_effect = Exception("API down")
+            classifier = GSARClassifier(instructor_client=mock_client)
+            steps = [TrajectoryStep(type="thought", content="s")]
+            result = classifier.classify(steps, [])
+            assert len(result) == 1
+            assert "stub" in result[0].explanation.lower()
 
     def test_classify_multi_model_single_model(self):
         """Single model in model_list should behave like classify()."""
@@ -566,23 +560,21 @@ class TestGSARClassifier:
         )
 
         with patch("agent_trust_lab.llm.get_api_key", return_value="mock-key"):
-            with patch("agent_trust_lab.llm.create_openai_client"):
-                with patch("instructor.from_openai") as mock_instructor:
-                    mock_client = mock_instructor.return_value
-                    mock_client.chat.completions.create.side_effect = [
-                        model_a_response,
-                        model_b_response,
-                        model_c_response,
-                    ]
-                    classifier = GSARClassifier()
-                    steps = [TrajectoryStep(type="thought", content="step")]
-                    result = classifier.classify_multi_model(
-                        steps, [], ["model-a", "model-b", "model-c"]
-                    )
-                    assert len(result) == 1
-                    assert result[0].gsar_label == "Grounded"
-                    assert 0.5 < result[0].g_score < 0.9
-                    assert "Multi-model vote" in result[0].explanation
+            mock_client = MagicMock()
+            mock_client.chat.completions.create.side_effect = [
+                model_a_response,
+                model_b_response,
+                model_c_response,
+            ]
+            classifier = GSARClassifier(instructor_client=mock_client)
+            steps = [TrajectoryStep(type="thought", content="step")]
+            result = classifier.classify_multi_model(
+                steps, [], ["model-a", "model-b", "model-c"]
+            )
+            assert len(result) == 1
+            assert result[0].gsar_label == "Grounded"
+            assert 0.5 < result[0].g_score < 0.9
+            assert "Multi-model vote" in result[0].explanation
 
     def test_classify_multi_model_majority_ungrounded(self):
         """Majority vote should select the label with most votes."""
@@ -614,32 +606,28 @@ class TestGSARClassifier:
         )
 
         with patch("agent_trust_lab.llm.get_api_key", return_value="mock-key"):
-            with patch("agent_trust_lab.llm.create_openai_client"):
-                with patch("instructor.from_openai") as mock_instructor:
-                    mock_client = mock_instructor.return_value
-                    mock_client.chat.completions.create.side_effect = [u1, u2, g1]
-                    classifier = GSARClassifier()
-                    steps = [TrajectoryStep(type="thought", content="step")]
-                    result = classifier.classify_multi_model(
-                        steps, [], ["m1", "m2", "m3"]
-                    )
-                    assert result[0].gsar_label == "Ungrounded"
+            mock_client = MagicMock()
+            mock_client.chat.completions.create.side_effect = [u1, u2, g1]
+            classifier = GSARClassifier(instructor_client=mock_client)
+            steps = [TrajectoryStep(type="thought", content="step")]
+            result = classifier.classify_multi_model(
+                steps, [], ["m1", "m2", "m3"]
+            )
+            assert result[0].gsar_label == "Ungrounded"
 
     def test_classify_multi_model_all_fail_fallback(self):
         """When all real LLM calls fail, each model uses stub internally and voting still works."""
         with patch("agent_trust_lab.llm.get_api_key", return_value="mock-key"):
-            with patch(
-                "agent_trust_lab.llm.create_openai_client",
-                side_effect=Exception("All down"),
-            ):
-                classifier = GSARClassifier()
-                steps = [TrajectoryStep(type="thought", content="step")]
-                result = classifier.classify_multi_model(
-                    steps, [], ["m1", "m2"]
-                )
-                assert len(result) == 1
-                assert "Multi-model vote" in result[0].explanation
-                assert result[0].gsar_label is not None
+            mock_client = MagicMock()
+            mock_client.chat.completions.create.side_effect = Exception("All down")
+            classifier = GSARClassifier(instructor_client=mock_client)
+            steps = [TrajectoryStep(type="thought", content="step")]
+            result = classifier.classify_multi_model(
+                steps, [], ["m1", "m2"]
+            )
+            assert len(result) == 1
+            assert "Multi-model vote" in result[0].explanation
+            assert result[0].gsar_label is not None
 
     def test_classify_multi_model_preserves_step_indices(self):
         """Multi-model voting should preserve correct step indices for multiple steps."""
@@ -663,21 +651,19 @@ class TestGSARClassifier:
         )
 
         with patch("agent_trust_lab.llm.get_api_key", return_value="mock-key"):
-            with patch("agent_trust_lab.llm.create_openai_client"):
-                with patch("instructor.from_openai") as mock_instructor:
-                    mock_client = mock_instructor.return_value
-                    mock_client.chat.completions.create.side_effect = [response, response]
-                    classifier = GSARClassifier()
-                    steps = [
-                        TrajectoryStep(type="thought", content="s0"),
-                        TrajectoryStep(type="thought", content="s1"),
-                        TrajectoryStep(type="thought", content="s2"),
-                    ]
-                    result = classifier.classify_multi_model(steps, [], ["m1", "m2"])
-                    assert len(result) == 3
-                    assert result[0].step_index == 0
-                    assert result[1].step_index == 1
-                    assert result[2].step_index == 2
+            mock_client = MagicMock()
+            mock_client.chat.completions.create.side_effect = [response, response]
+            classifier = GSARClassifier(instructor_client=mock_client)
+            steps = [
+                TrajectoryStep(type="thought", content="s0"),
+                TrajectoryStep(type="thought", content="s1"),
+                TrajectoryStep(type="thought", content="s2"),
+            ]
+            result = classifier.classify_multi_model(steps, [], ["m1", "m2"])
+            assert len(result) == 3
+            assert result[0].step_index == 0
+            assert result[1].step_index == 1
+            assert result[2].step_index == 2
 
 
 class TestFaithfulnessChecker:

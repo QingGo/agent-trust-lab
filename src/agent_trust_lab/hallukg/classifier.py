@@ -190,7 +190,9 @@ class GSARClassifier:
             futures: dict = {}
             for model in model_list:
                 classifier_for_model = GSARClassifier(
-                    model=model, temperature=self.temperature
+                    model=model,
+                    temperature=self.temperature,
+                    instructor_client=self._instructor_client,
                 )
 
                 def _run_classify(
