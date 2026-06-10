@@ -42,14 +42,22 @@ class ONNXNLISession:
             try:
                 import onnxruntime as _ort  # noqa: F401
             except ImportError:
-                logger.warning("onnxruntime not available — ONNX NLI disabled; install via: pip install onnxruntime")
+                logger.warning(
+                    "onnxruntime not available — ONNX NLI disabled; "
+                    "install via: pip install onnxruntime"
+                )
                 return
 
             model_path = os.path.join(self._cache_dir, "deberta-base-mnli", "model.onnx")
             tokenizer_path = os.path.join(os.path.dirname(model_path), "tokenizer.json")
 
             if not os.path.exists(model_path) or not os.path.exists(tokenizer_path):
-                logger.debug("ONNX NLI model not cached at %s — run: agent-trust-lab setup-onnx", self._cache_dir)
+                logger.warning(
+                    "ONNX NLI model not cached at %s — FaithfulnessChecker "
+                    "will use TF-IDF fallback. "
+                    "For accurate NLI scores, run: agent-trust-lab setup-onnx",
+                    self._cache_dir,
+                )
                 return
 
             try:

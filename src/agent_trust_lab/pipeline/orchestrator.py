@@ -13,13 +13,12 @@ from agent_trust_lab.models.trajectory import (
     TrajectoryStep,
 )
 from agent_trust_lab.models.trap import EnhancedTrapDef
-from agent_trust_lab.traps.manager import TrapManager
-
 from agent_trust_lab.pipeline.compliance import ComplianceAuditor
 from agent_trust_lab.pipeline.hallukg_pipeline import HalluKGPipeline
 from agent_trust_lab.pipeline.models import EvaluationResult
 from agent_trust_lab.pipeline.result_cache import ResultCache
 from agent_trust_lab.pipeline.task_runner import TaskRunner
+from agent_trust_lab.traps.manager import TrapManager
 
 logger = get_logger("orchestrator")
 
@@ -34,6 +33,32 @@ class Orchestrator:
         self._hallukg = HalluKGPipeline(config)
         self._compliance = ComplianceAuditor()
         self._cache = ResultCache(config)
+        self._check_onnx_on_init()
+
+    def _check_onnx_on_init(self) -> None:
+        """Log ONNX model availability at startup for user awareness."""
+        try:
+            from agent_trust_lab.onnx_setup import check_models_available
+
+            status = check_models_available()
+            missing = [m for m, ok in status.items() if not ok]
+            if missing:
+                models_desc = {
+                    "nli": "NLI faithfulness (deberta-base-mnli, 532MB)",
+                    "embed": "semantic anchoring (all-MiniLM-L6-v2, 86MB)",
+                }
+                msgs = [f"  - {models_desc.get(m, m)}" for m in missing]
+                logger.info(
+                    "ONNX models not cached — falling back to lightweight "
+                    "alternatives:\n%s\n"
+                    "  Run: agent-trust-lab setup-onnx "
+                    "(one-time, ~600MB download)",
+                    "\n".join(msgs),
+                )
+            else:
+                logger.debug("All ONNX models available ✓")
+        except Exception:
+            pass  # Non-critical; ONNX check should never block evaluation
 
     # ── backward-compat thin wrappers ──────────────────────────────
 
@@ -579,6 +604,10 @@ class Orchestrator:
             trap_type: Original trap type (e.g. "parameter_hallucination").
             category: "general_agent" or "code_agent".
             knowledge_source: Known facts text for anchoring reasoner.
+                NOTE: 54% of active traps (41/76) provide knowledge_source. For
+                the remaining 46%, anchoring falls back to token-overlap and GSAR
+                classifier judges by surface plausibility without evidence anchor.
+                Future: auto-generate knowledge_source via LLM for uncovered traps.
             severity: Trap severity for metadata.
             difficulty: Trap difficulty for metadata.
             base_task: Original base task for metadata.

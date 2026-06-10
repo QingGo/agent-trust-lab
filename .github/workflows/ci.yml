@@ -1,0 +1,77 @@
+name: CI
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+    branches: [master, main]
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Install uv
+        run: pip install uv
+
+      - name: Install dependencies
+        run: uv pip install --system -e . --group dev
+
+      - name: Ruff check
+        run: ruff check src/ tests/
+
+  typecheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install uv
+        run: pip install uv
+
+      - name: Install dependencies
+        run: uv pip install --system -e . --group dev
+
+      - name: Install basedpyright
+        run: npm install -g basedpyright
+
+      - name: basedpyright check
+        run: basedpyright src/
+
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.10"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install uv
+        run: pip install uv
+
+      - name: Install dependencies
+        run: uv pip install --system -e . --group dev
+
+      - name: Run unit tests
+        run: |
+          python -m pytest tests/ -v \
+            -m "not integration and not docker and not slow and not e2e" \
+            -k "not TestRunBatch and not TestBatchCLI and not TestRealTrapLibrary and not TestWebUIBasics and not test_run_returns_secure_trajectory and not test_semantic_embedding_encodes_text and not test_check_identical_texts and not test_batch_check_mixed_similarity" \
+            --ignore=tests/integration/ \
+            --tb=short

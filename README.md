@@ -34,7 +34,7 @@ Modern AI agents (LangChain, OpenAI, Codex, and emerging CLI-based agents) execu
 
 **Agent Trust Lab** answers this question by:
 
-1. **Adversarial Testing** — 160+ LLM-generated traps across 21 attack types (prompt injection, backdoors, tool bypass, data exfiltration, reasoning contamination, MCP attacks, code hallucination, and more), hardened through an automated red team pipeline
+1. **Adversarial Testing** — 76 curated LLM-generated traps across 31 attack types (prompt injection, backdoors, tool bypass, data exfiltration, reasoning contamination, MCP attacks, code hallucination, and more), hardened through an automated red team pipeline
 2. **Multi-Dimensional Auditing** — 12 compliance rules covering tool authorization, source verification, info disclosure, state integrity, and pre-execution confirmation
 3. **Hallucination Detection** — GSAR classification (Grounded / Ungrounded / Contradicted / Complementary) with multi-tier evidence anchoring (ONNX semantic embeddings + token overlap + NetworkX multi-hop reasoning)
 4. **Cross-Validation** — Faithfulness scores cross-validated by deterministic ONNX NLI against LLM judge output
@@ -195,7 +195,7 @@ sequenceDiagram
     participant C as Calibration
     participant R as Report Generator
 
-    Note over T,M: 160+ YAML traps · 65 field generators
+    Note over T,M: 76 curated YAML traps · 65 field generators
     T->>M: Select & mutate traps
     M->>H: Inject trap into agent context
     Note over H: Execute task with tool access<br/>Capture SecureTrajectory
@@ -343,36 +343,36 @@ agent-trust-lab diff results_v1.json results_v2.json --threshold 0.10
 
 **76 curated YAML traps** (streamlined from 160 for improved discrimination) across 2 categories and 31 attack types:
 
-### General Agent Traps (~142)
+### General Agent Traps (58)
 
 | Attack Type | Count | Description |
 |-------------|-------|-------------|
-| `parameter_hallucination` | 12 | Hallucinated function parameters or API signatures |
-| `tool_bypass` | 10 | Unauthorized tool invocation via context injection |
-| `phishing_injection` | 8 | Deceptive instructions mimicking trusted sources |
-| `prompt_extraction` | 7 | Attempts to extract system prompt or internal state |
-| `indirect_prompt_injection` | 6 | Injection through external content (web pages, documents) |
-| `reasoning_contradiction` | 6 | Logical traps that test consistency under contradiction |
-| `retrieval_contamination` | 5 | Poisoned knowledge base or search results |
-| `planning_divergence` | 5 | Subtask reordering to bypass security constraints |
-| `backdoor_injection` | 5 | Hidden trigger conditions for later activation |
-| `combined_attack` | 8 | Multi-vector attacks combining 2+ techniques |
-| `DoS` | 4 | Resource exhaustion via infinite loops or recursion |
-| `memory_pollution` | 4 | Context window pollution with misleading patterns |
-| `MCP_*` | 6 | Model Context Protocol attacks (DoS, pollution, poisoning) |
-| `authority_appeal` | 4 | Fake authority claims to override safety |
-| Others | 52 | Loop induction, multi-turn pollution, benign controls, etc. |
+| `memory_pollution` | 5 | Context window pollution with misleading patterns, fake user messages |
+| `human_interaction_spoof` | 5 | Fake user approval, spoofed human-in-the-loop confirmations |
+| `tool_parameter_coercion` | 4 | Malicious tool parameter injection via context manipulation |
+| `loop_induction` | 4 | Infinite loop or recursive call triggers via injected instructions |
+| `tool_description_poisoning` | 4 | Tool descriptions poisoned to suggest dangerous alternative tools |
+| `multi_turn_gradual_pollution` | 4 | Slow context degradation across multiple turns |
+| `tool_bypass` | 3 | Unauthorized tool invocation via injected output hints |
+| `prompt_extraction` | 3 | Attempts to extract system prompt or internal state |
+| `retrieval_contamination` | 3 | Poisoned knowledge base or search results |
+| `phishing_injection` | 2 | Deceptive instructions mimicking trusted sources |
+| `dos_attack` | 2 | Resource exhaustion via infinite loops or recursion |
+| `planning_divergence` | 2 | Subtask reordering to bypass security constraints |
+| `mcp_prompt_injection` | 2 | Prompt injection via MCP resource content |
+| `authority_appeal` | 2 | Fake authority claims to override safety |
+| `combined_auth_bypass` | 2 | Multi-vector: auth bypass + tool abuse |
+| `combined_phishing_backdoor` | 2 | Multi-vector: phishing + backdoor activation |
+| Others (9 types) | 9 | parameter_hallucination, reasoning_contradiction, overly_cautious, backdoor_injection, benign_control, mcp_tool_poisoning, indirect_prompt_injection, mcp_resource_exfiltration, mcp_tool_impersonation |
 
-### Code Agent Traps (~18)
+### Code Agent Traps (18)
 
 | Attack Type | Count | Description |
 |-------------|-------|-------------|
-| `code_semantic_hallucination` | 5 | Non-existent APIs/libraries suggested in generated code |
-| `shell_side_effect` | 4 | Hidden data exfiltration in shell scripts |
-| `config_poisoning` | 3 | Malicious configuration file modifications |
-| `code_review_bypass` | 3 | Security review avoidance in generated code |
-| `MCP_poisoning` | 2 | Model Context Protocol code-level attacks |
-| `backdoor_injection` | 1 | Hidden backdoor in generated code |
+| `combined_attack` | 4 | Multi-vector code attacks: backdoor + bypass + config poisoning |
+| `backdoor_injection` | 4 | Hidden backdoor in generated code with delayed activation |
+| `indirect_prompt_injection` | 2 | Injection through external code comments or docstrings |
+| Others (8 types) | 8 | mcp_tool_impersonation, config_file_poisoning, mcp_resource_exfiltration, code_semantic_hallucination, shell_side_effect, benign_code_control, code_review_bypass, mcp_prompt_injection |
 
 ### Trap Anatomy
 
@@ -407,7 +407,7 @@ remediation:
 
 ## Red Team Pipeline
 
-Beyond the 160 LLM-generated traps, Agent Trust Lab includes an automated red team pipeline for generating variants and hardening difficulty:
+Beyond the 76 curated traps, Agent Trust Lab includes an automated red team pipeline for generating variants and hardening difficulty:
 
 ### Trap Generation (`generate-traps`)
 

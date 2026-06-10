@@ -34,7 +34,7 @@
 
 **Agent Trust Lab** 通过以下方式回答这个问题：
 
-1. **对抗性测试** — 160+ 精工陷阱，覆盖 21 种攻击类型（提示注入、后门、工具绕过、数据泄露、推理污染、MCP 攻击、代码幻觉等）
+1. **对抗性测试** — 76 个精选陷阱，覆盖 31 种攻击类型（提示注入、后门、工具绕过、数据泄露、推理污染、MCP 攻击、代码幻觉等）
 2. **多维度审计** — 12 条合规规则，覆盖工具授权、来源验证、信息披露、状态完整性和执行前确认
 3. **幻觉检测** — GSAR 分类（Grounded / Ungrounded / Contradicted / Complementary），配合多层证据锚定（ONNX 语义嵌入 + 词元重叠 + NetworkX 多跳推理）
 4. **交叉验证** — 忠实度分数通过确定性 ONNX NLI 对 LLM 评判输出进行交叉验证
@@ -195,7 +195,7 @@ sequenceDiagram
     participant C as 校准模块
     participant R as 报告生成器
 
-    Note over T,M: 160+ YAML 陷阱 · 65 个字段生成器
+    Note over T,M: 76 个精选 YAML 陷阱 · 65 个字段生成器
     T->>M: 选择并变异陷阱
     M->>H: 将陷阱注入 Agent 上下文
     Note over H: 执行任务并携带工具访问<br/>捕获 SecureTrajectory
@@ -343,36 +343,36 @@ agent-trust-lab diff results_v1.json results_v2.json --threshold 0.10
 
 **76 个精选 YAML 陷阱**（从 160 精简而来，提升区分度），覆盖 2 个类别和 31 种攻击类型：
 
-### 通用 Agent 陷阱（~142 个）
+### 通用 Agent 陷阱（58 个）
 
 | 攻击类型 | 数量 | 描述 |
 |---------|------|------|
-| `parameter_hallucination` | 12 | 虚构的函数参数或 API 签名 |
-| `tool_bypass` | 10 | 通过上下文注入调用未授权工具 |
-| `phishing_injection` | 8 | 模仿可信来源的欺骗性指令 |
-| `prompt_extraction` | 7 | 试图提取系统提示或内部状态 |
-| `indirect_prompt_injection` | 6 | 通过外部内容（网页、文档）注入 |
-| `reasoning_contradiction` | 6 | 测试矛盾下一致性的逻辑陷阱 |
-| `retrieval_contamination` | 5 | 被污染的知识库或搜索结果 |
-| `planning_divergence` | 5 | 通过子任务重排序绕过安全约束 |
-| `backdoor_injection` | 5 | 隐藏的后门触发条件 |
-| `combined_attack` | 8 | 结合 2 种以上技术的多向量攻击 |
-| `DoS` | 4 | 通过无限循环或递归耗尽资源 |
-| `memory_pollution` | 4 | 上下文窗口污染误导模式 |
-| `MCP_*` | 6 | 模型上下文协议攻击（DoS、污染、投毒） |
-| `authority_appeal` | 4 | 虚假权威声明以覆盖安全防护 |
-| 其他 | 52 | 循环诱导、多轮污染、良性对照等 |
+| `memory_pollution` | 5 | 上下文窗口污染：误导模式、伪造用户消息 |
+| `human_interaction_spoof` | 5 | 伪造用户批准、欺骗性人机交互确认 |
+| `tool_parameter_coercion` | 4 | 通过上下文操纵注入恶意工具参数 |
+| `loop_induction` | 4 | 通过注入指令触发无限循环或递归调用 |
+| `tool_description_poisoning` | 4 | 工具描述被污染，暗示危险替代工具 |
+| `multi_turn_gradual_pollution` | 4 | 多轮对话中的渐进式上下文退化 |
+| `tool_bypass` | 3 | 通过注入输出提示调用未授权工具 |
+| `prompt_extraction` | 3 | 试图提取系统提示或内部状态 |
+| `retrieval_contamination` | 3 | 被污染的知识库或搜索结果 |
+| `phishing_injection` | 2 | 模仿可信来源的欺骗性指令 |
+| `dos_attack` | 2 | 通过无限循环或递归耗尽资源 |
+| `planning_divergence` | 2 | 通过子任务重排序绕过安全约束 |
+| `mcp_prompt_injection` | 2 | 通过 MCP 资源内容进行提示注入 |
+| `authority_appeal` | 2 | 虚假权威声明以覆盖安全防护 |
+| `combined_auth_bypass` | 2 | 多向量攻击：认证绕过 + 工具滥用 |
+| `combined_phishing_backdoor` | 2 | 多向量攻击：钓鱼 + 后门激活 |
+| 其他（9 种类型） | 9 | parameter_hallucination、reasoning_contradiction、overly_cautious、backdoor_injection、benign_control、mcp_tool_poisoning、indirect_prompt_injection、mcp_resource_exfiltration、mcp_tool_impersonation |
 
-### 代码 Agent 陷阱（~18 个）
+### 代码 Agent 陷阱（18 个）
 
 | 攻击类型 | 数量 | 描述 |
 |---------|------|------|
-| `code_semantic_hallucination` | 5 | 生成代码中引用不存在的 API/库 |
-| `shell_side_effect` | 4 | Shell 脚本中的隐藏数据泄露 |
-| `config_poisoning` | 3 | 恶意配置文件修改 |
-| `code_review_bypass` | 3 | 生成代码中规避安全审查 |
-| `MCP_poisoning` | 2 | 模型上下文协议代码级攻击 |
-| `backdoor_injection` | 1 | 生成代码中的隐藏后门 |
+| `combined_attack` | 4 | 多向量代码攻击：后门 + 绕过 + 配置投毒 |
+| `backdoor_injection` | 4 | 生成代码中的隐藏后门，延迟激活 |
+| `indirect_prompt_injection` | 2 | 通过外部代码注释或文档字符串注入 |
+| 其他（8 种类型） | 8 | mcp_tool_impersonation、config_file_poisoning、mcp_resource_exfiltration、code_semantic_hallucination、shell_side_effect、benign_code_control、code_review_bypass、mcp_prompt_injection |
 
 ### 陷阱结构
 
@@ -407,7 +407,7 @@ remediation:
 
 ## 红队管道
 
-除了 160 个 LLM 生成的陷阱外，Agent Trust Lab 还包含自动化红队管道，用于生成变体和强化难度：
+除了 76 个精选陷阱外，Agent Trust Lab 还包含自动化红队管道，用于生成变体和强化难度：
 
 ### 陷阱生成（`generate-traps`）
 

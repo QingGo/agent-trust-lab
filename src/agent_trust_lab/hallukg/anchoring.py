@@ -37,7 +37,12 @@ class EmbeddingEngine:
         tokenizer_path = os.path.join(model_dir, "tokenizer.json")
 
         if not os.path.exists(model_path) or not os.path.exists(tokenizer_path):
-            logger.debug("Embedding ONNX model not cached, using token overlap fallback")
+            logger.warning(
+                "Embedding ONNX model not cached at %s — AnchoringReasoner "
+                "will use token-overlap fallback. "
+                "For accurate semantic anchoring, run: agent-trust-lab setup-onnx",
+                model_dir,
+            )
             return
 
         try:
