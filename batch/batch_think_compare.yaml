@@ -42,7 +42,7 @@ evaluations:
 common:
   parallel: 4
   concurrent: true
-  output_dir: "./results/think_compare"
+  output_dir: "./output/think_compare"
 
 report:
   format: html

@@ -16,25 +16,29 @@ wheels/
 # environment
 .env
 
-# evaluation outputs
+# generated outputs (default: ./output/)
+output/
+
+# legacy output dirs (pre-unification — keep gitignored until cleaned)
+results/
 results.json
 results.html
-results/
-
-# project
-docs/
-!docs/implementation_notes.md
-.agent_memory.md
-.handoff.md
-.DS_Store
-compare_results/
 results.md
+compare_results/
+redteam_output/
+
+# misc generated files
 *.log
 calibration_candidates.json
 annotations.json
+
+# docs (only implementation_notes.md is tracked)
+docs/
+!docs/implementation_notes.md
+
+# tooling
 .omo/
 .opencode/
-
-# batch evaluation outputs (configs in batch/ are tracked)
-redteam_output/
-output/
+.agent_memory.md
+.handoff.md
+.DS_Store

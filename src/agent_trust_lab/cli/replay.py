@@ -5,7 +5,6 @@ from typing import Optional
 import typer
 
 from agent_trust_lab.cli import app, console
-from agent_trust_lab.log import cli_verbosity_to_level, setup_logging
 from agent_trust_lab.cli._shared import (
     _display_results,
     _get_traps_data_dir,
@@ -13,6 +12,7 @@ from agent_trust_lab.cli._shared import (
     _parse_vote_models,
 )
 from agent_trust_lab.config import DEFAULT_MODEL
+from agent_trust_lab.log import cli_verbosity_to_level, setup_logging
 
 
 @app.command()
@@ -43,7 +43,7 @@ def replay(
     parallel: int = typer.Option(1, "--parallel", help="Number of traps to run in parallel"),
     max_steps: int = typer.Option(10, "--max-steps", help="Max ReAct steps per agent run"),
     output_dir: str = typer.Option(
-        "./results/", "--output-dir", help="Output directory for results"
+        "./output/results/", "--output-dir", help="Output directory for results"
     ),
     grounded_threshold: float = typer.Option(
         0.3, "--grounded-threshold", help="HalluKG anchoring similarity threshold (0-1)"
@@ -81,7 +81,6 @@ def replay(
     import json as _json
 
     from agent_trust_lab.config import EvaluationConfig
-
     from agent_trust_lab.models.trajectory import SecureTrajectory
     from agent_trust_lab.orchestrator import Orchestrator
 

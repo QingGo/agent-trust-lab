@@ -95,7 +95,7 @@ evaluations:
         assert cfg.sandbox_network is False
         assert cfg.docker_host == ""
         assert cfg.parallel == 1
-        assert cfg.output_dir == "./results/"
+        assert cfg.output_dir == "./output/results/"
         assert cfg.report_format == "html"
         assert cfg.report_lang == "en"
         assert cfg.report_open is False

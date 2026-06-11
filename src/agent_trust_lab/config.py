@@ -24,7 +24,7 @@ class EvaluationConfig:
     docker_host: str = ""
     anchor_kb: str = "./kb/"
     trap_library_path: str = "./traps/"
-    output_dir: str = "./results/"
+    output_dir: str = "./output/results/"
     max_steps: int = 10
     parallel: int = 1
     calibration_profile: Optional[str] = None

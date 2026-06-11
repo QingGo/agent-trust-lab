@@ -4,7 +4,6 @@ from typing import List, Optional
 import typer
 
 from agent_trust_lab.cli import app, console
-from agent_trust_lab.log import cli_verbosity_to_level, setup_logging
 from agent_trust_lab.cli._shared import (
     _build_run_config_params,
     _display_results,
@@ -13,6 +12,7 @@ from agent_trust_lab.cli._shared import (
     _run_evaluation,
 )
 from agent_trust_lab.config import DEFAULT_MODEL
+from agent_trust_lab.log import cli_verbosity_to_level, setup_logging
 
 
 @app.command()
@@ -52,7 +52,7 @@ def run_code(
     parallel: int = typer.Option(1, "--parallel", help="Number of traps to run in parallel"),
     max_steps: int = typer.Option(10, "--max-steps", help="Max ReAct steps per agent run"),
     output_dir: str = typer.Option(
-        "./results/", "--output-dir", help="Output directory for results"
+        "./output/results/", "--output-dir", help="Output directory for results"
     ),
     grounded_threshold: float = typer.Option(
         0.3, "--grounded-threshold", help="HalluKG anchoring similarity threshold (0-1)"

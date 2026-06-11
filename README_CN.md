@@ -98,7 +98,7 @@ echo 'DEEPSEEK_API_KEY=sk-...' > .env
 agent-trust-lab run \
   -t tool_bypass_01 \
   --model deepseek-v4-flash \
-  --output-dir results.json
+  --output-dir output/
 
 # 生成中文 HTML 报告
 agent-trust-lab report results.json --lang zh
@@ -335,7 +335,7 @@ agent-trust-lab diff results_v1.json results_v2.json --threshold 0.10
 | `--timeout` | 每个陷阱超时（秒） | `120` |
 | `--sandbox` | 沙箱后端（`docker`/`dry-run`） | `dry-run` |
 | `--config-file` | YAML/JSON 配置文件 | 无 |
-| `--output-dir` | 输出目录 | `output/` |
+| `--output-dir` | 输出目录 | `output/results/` |
 
 ---
 

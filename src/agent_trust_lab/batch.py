@@ -48,7 +48,7 @@ class BatchConfig:
     docker_host: str = ""
     parallel: int = 1
     concurrent: bool = False
-    output_dir: str = "./results/"
+    output_dir: str = "./output/results/"
     report_format: str = "html"
     report_lang: str = "en"
     report_open: bool = False
@@ -121,7 +121,7 @@ def parse_batch_yaml(yaml_path: str) -> BatchConfig:
         docker_host=str(common.get("docker_host", "")),
         parallel=int(common.get("parallel", 1)),
         concurrent=bool(common.get("concurrent", False)),
-        output_dir=str(common.get("output_dir", "./results/")),
+        output_dir=str(common.get("output_dir", "./output/results/")),
         report_format=str(report_cfg.get("format", "html")).lower(),
         report_lang=str(report_cfg.get("lang", "en")).lower(),
         report_open=bool(report_cfg.get("open", False)),
@@ -155,7 +155,7 @@ def _run_single_eval(
                         safe_label, len(existing),
                     )
                     return safe_label, [], json_path
-        except (json.JSONDecodeError, OSError) as e:
+        except (json.JSONDecodeError, OSError):
             pass
 
     config_kwargs: Dict[str, Any] = dict(

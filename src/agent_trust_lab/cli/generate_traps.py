@@ -7,13 +7,13 @@ from rich.table import Table
 from agent_trust_lab.cli import app, console
 from agent_trust_lab.cli._shared import _get_traps_data_dir
 from agent_trust_lab.config import DEFAULT_MODEL
-from agent_trust_lab.log import setup_logging, cli_verbosity_to_level
+from agent_trust_lab.log import cli_verbosity_to_level, setup_logging
 
 
 @app.command()
 def generate_traps(
     output_dir: str = typer.Option(
-        "./redteam_output/",
+        "./output/redteam/",
         "--output-dir",
         "-o",
         help="Output directory for generated trap YAML files",

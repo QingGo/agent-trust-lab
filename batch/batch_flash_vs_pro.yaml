@@ -28,7 +28,7 @@ evaluations:
 common:
   parallel: 4
   concurrent: true
-  output_dir: "./results/flash_vs_pro"
+  output_dir: "./output/flash_vs_pro"
 
 report:
   format: html

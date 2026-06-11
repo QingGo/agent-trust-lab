@@ -1,5 +1,5 @@
 common:
-  output_dir: results/thinking_parallel
+  output_dir: output/thinking_parallel
   parallel: 10
   concurrent: true
   sandbox: dry-run

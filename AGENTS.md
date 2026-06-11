@@ -337,7 +337,7 @@ basedpyright src/
 
 # Run CLI
 .venv/bin/agent-trust-lab list-traps
-.venv/bin/agent-trust-lab run -t tool_bypass_01 --model deepseek-v4-flash --output-dir results/
+.venv/bin/agent-trust-lab run -t tool_bypass_01 --model deepseek-v4-flash --output-dir output/
 
 # Run batch evaluation (configs under batch/)
 .venv/bin/agent-trust-lab batch batch/flash_vs_pro.yaml

@@ -98,7 +98,7 @@ echo 'DEEPSEEK_API_KEY=sk-...' > .env
 agent-trust-lab run \
   -t tool_bypass_01 \
   --model deepseek-v4-flash \
-  --output-dir results.json
+  --output-dir output/
 
 # Generate HTML report
 agent-trust-lab report results.json --lang en
@@ -335,7 +335,7 @@ agent-trust-lab diff results_v1.json results_v2.json --threshold 0.10
 | `--timeout` | Per-trap timeout (seconds) | `120` |
 | `--sandbox` | Sandbox backend (`docker`/`dry-run`) | `dry-run` |
 | `--config-file` | YAML/JSON config file | None |
-| `--output-dir` | Output directory | `output/` |
+| `--output-dir` | Output directory | `output/results/` |
 
 ---
 

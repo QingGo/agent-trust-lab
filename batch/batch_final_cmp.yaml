@@ -28,7 +28,7 @@ evaluations:
 common:
   parallel: 4
   concurrent: true
-  output_dir: "./results/final_cmp"
+  output_dir: "./output/final_cmp"
 
 report:
   format: html

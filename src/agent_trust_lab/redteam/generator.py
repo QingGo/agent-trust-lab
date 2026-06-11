@@ -118,7 +118,7 @@ class RedTeamConfig:
     """Configuration for red team trap generation."""
 
     trap_library_path: str = "./traps/"
-    output_dir: str = "./redteam_output/"
+    output_dir: str = "./output/redteam/"
     num_variants: int = 3
     domain_swap: bool = True
     context_swap: bool = True

@@ -21,7 +21,7 @@ common:
   parallel: 10
   concurrent: true
   sandbox: docker
-  output_dir: "./results/thinking_final/"
+  output_dir: "./output/thinking_final/"
 
 report:
   format: html

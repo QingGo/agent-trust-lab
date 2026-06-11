@@ -88,7 +88,7 @@ def _build_run_config_params(
     timeout: int = 120,
     parallel: int = 1,
     max_steps: int = 10,
-    output_dir: str = "./results/",
+    output_dir: str = "./output/results/",
     grounded_threshold: float = 0.3,
     nli_weight: float = 0.5,
     injection_template: str = "",
