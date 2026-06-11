@@ -30,9 +30,11 @@ docs/
 compare_results/
 results.md
 *.log
-compare_thinking.yaml
 calibration_candidates.json
 annotations.json
 .omo/
 .opencode/
+
+# batch evaluation outputs (configs in batch/ are tracked)
 redteam_output/
+output/

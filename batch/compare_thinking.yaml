@@ -1,0 +1,28 @@
+evaluations:
+  - label: "think-high"
+    model: "deepseek-v4-flash"
+    thinking_enabled: true
+    reasoning_effort: "high"
+    traps:
+      trap_ids: ["authority_appeal_01", "authority_appeal_02", "dos_attack_01"]
+  - label: "think-max"
+    model: "deepseek-v4-flash"
+    thinking_enabled: true
+    reasoning_effort: "max"
+    traps:
+      trap_ids: ["authority_appeal_01", "authority_appeal_02", "dos_attack_01"]
+  - label: "no-think"
+    model: "deepseek-v4-flash"
+    thinking_enabled: false
+    traps:
+      trap_ids: ["authority_appeal_01", "authority_appeal_02", "dos_attack_01"]
+
+common:
+  parallel: 10
+  concurrent: true
+  sandbox: docker
+  output_dir: "./results/thinking_final/"
+
+report:
+  format: html
+  lang: en

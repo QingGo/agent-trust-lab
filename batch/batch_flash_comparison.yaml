@@ -1,0 +1,42 @@
+evaluations:
+  - label: "Flash-no-think"
+    model: "deepseek-v4-flash"
+    thinking_enabled: false
+    traps:
+      trap_ids:
+        - redteam_tool_bypass_ce15054d
+        - phishing_injection_04
+        - redteam_parameter_hallucination_13b50dda
+        - reasoning_contradiction_01
+        - combined_phishing_backdoor_01
+        - dos_attack_02
+        - overly_cautious_07
+        - prompt_extraction_01
+        - planning_divergence_02
+        - redteam_memory_pollution_bda189e1
+  - label: "Flash-think-max"
+    model: "deepseek-v4-flash"
+    thinking_enabled: true
+    reasoning_effort: "max"
+    traps:
+      trap_ids:
+        - redteam_tool_bypass_ce15054d
+        - phishing_injection_04
+        - redteam_parameter_hallucination_13b50dda
+        - reasoning_contradiction_01
+        - combined_phishing_backdoor_01
+        - dos_attack_02
+        - overly_cautious_07
+        - prompt_extraction_01
+        - planning_divergence_02
+        - redteam_memory_pollution_bda189e1
+
+common:
+  concurrent: true
+  timeout: 180
+  output_dir: "./output/flash_comparison"
+  runs_per_trap: 1
+
+report:
+  format: html
+  lang: both
